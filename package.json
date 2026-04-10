@@ -1,5 +1,5 @@
 {
-  "name": "judicial-mcp",
+  "name": "@jurislm/judicial-mcp",
   "version": "1.2.6",
   "description": "MCP server for accessing Taiwan Judicial Yuan open data and judgments.",
   "keywords": [
@@ -9,13 +9,13 @@
     "court",
     "taiwan"
   ],
-  "homepage": "https://github.com/terry90918/judicial-mcp#readme",
+  "homepage": "https://github.com/jurislm/judicial-mcp#readme",
   "bugs": {
-    "url": "https://github.com/terry90918/judicial-mcp/issues"
+    "url": "https://github.com/jurislm/judicial-mcp/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/terry90918/judicial-mcp.git"
+    "url": "git+https://github.com/jurislm/judicial-mcp.git"
   },
   "license": "MIT",
   "author": {
