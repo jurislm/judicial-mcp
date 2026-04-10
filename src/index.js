@@ -5,13 +5,10 @@
  * @description 司法院 MCP 伺服器 - 遵循 Model Context Protocol 規範
  */
 
-const originalConsole = { ...console };
-console.log = console.info = console.warn = () => {};
-try {
-  require('dotenv').config();
-} finally {
-  Object.assign(console, originalConsole);
-}
+// MCP 使用 stdio transport，stdout 必須保持乾淨（僅 JSON-RPC 訊息）
+// 將 console.log/info/warn 重定向到 stderr，永久生效
+console.log = console.info = console.warn = (...args) => process.stderr.write(args.join(' ') + '\n');
+require('dotenv').config();
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
@@ -44,6 +41,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 /**
+ * 協議層錯誤處理（server.onerror — MCP 規範要求）
+ */
+server.onerror = (error) => {
+  console.error('MCP 協議錯誤:', error?.message || error);
+};
+
+/**
  * 處理工具調用請求
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -55,6 +59,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     const result = await TOOL_HANDLERS[name](args || {});
+
+    // download_file 直接回傳 MCP 格式的 resource response，其餘 handler 回傳原始資料
+    if (result?.content && Array.isArray(result.content)) {
+      return result;
+    }
     return createSuccessResponse(result);
   } catch (error) {
     console.error(`執行工具 ${name} 時發生錯誤:`, error?.message);

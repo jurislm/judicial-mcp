@@ -68,13 +68,14 @@ describe('MCP 伺服器測試', () => {
   });
 
   describe('工具配置驗證', () => {
-    test('auth_token 工具配置正確', () => {
+    test('auth_token 工具配置正確 — 不暴露帳密欄位', () => {
       const tool = TOOLS_CONFIG.auth_token;
-      
+
       expect(tool.name).toBe('auth_token');
-      expect(tool.inputSchema.properties).toHaveProperty('user');
-      expect(tool.inputSchema.properties).toHaveProperty('password');
-      expect(tool.inputSchema.required).toBeUndefined(); // 因為有預設值
+      // 安全性：帳密從環境變數讀取，不在 inputSchema 中暴露
+      expect(tool.inputSchema.properties).not.toHaveProperty('user');
+      expect(tool.inputSchema.properties).not.toHaveProperty('password');
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     test('list_judgments 工具配置正確', () => {
@@ -104,8 +105,11 @@ describe('MCP 伺服器測試', () => {
       expect(tool.inputSchema.properties).toHaveProperty('skip');
       expect(tool.inputSchema.properties).toHaveProperty('token');
       expect(tool.inputSchema.required).toEqual(['fileSetId', 'token']);
-      expect(tool.inputSchema.properties.top.pattern).toBe('^[0-9]+$');
-      expect(tool.inputSchema.properties.skip.pattern).toBe('^[0-9]+$');
+      // JSON Schema integer type（非 string + pattern）
+      expect(tool.inputSchema.properties.top.type).toBe('integer');
+      expect(tool.inputSchema.properties.skip.type).toBe('integer');
+      expect(tool.inputSchema.properties.top.pattern).toBeUndefined();
+      expect(tool.inputSchema.properties.skip.pattern).toBeUndefined();
     });
 
     test('list_categories 工具配置正確', () => {
@@ -132,13 +136,14 @@ describe('MCP 伺服器測試', () => {
       expect(tool.inputSchema.additionalProperties).toBe(false);
     });
 
-    test('member_token 工具配置正確', () => {
+    test('member_token 工具配置正確 — 不暴露帳密欄位', () => {
       const tool = TOOLS_CONFIG.member_token;
-      
+
       expect(tool.name).toBe('member_token');
-      expect(tool.inputSchema.properties).toHaveProperty('user');
-      expect(tool.inputSchema.properties).toHaveProperty('password');
-      expect(tool.inputSchema.required).toBeUndefined(); // 因為有預設值
+      // 安全性：帳密從環境變數讀取，不在 inputSchema 中暴露
+      expect(tool.inputSchema.properties).not.toHaveProperty('user');
+      expect(tool.inputSchema.properties).not.toHaveProperty('password');
+      expect(tool.inputSchema.required).toBeUndefined();
       expect(tool.inputSchema.additionalProperties).toBe(false);
     });
   });
