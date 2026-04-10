@@ -75,3 +75,6 @@ CLAUDE.md
 .claude/
 mcp.json
 .mcp.json
+
+# Git worktrees
+.worktrees/
