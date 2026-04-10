@@ -41,4 +41,25 @@ const createErrorResponse = (error, message) => {
   };
 };
 
-module.exports = { createSuccessResponse, createErrorResponse };
+/**
+ * 建立二進位資源的 MCP 工具回應
+ * MCP spec: resource content type 用於傳遞二進位資料（blob）
+ * @param {Buffer|string} data - 原始二進位資料
+ * @param {string} mimeType - MIME type（如 'application/octet-stream'）
+ * @param {string} uri - 資源識別 URI
+ * @returns {Object} MCP CallToolResult with resource content type
+ */
+const createBlobResponse = (data, mimeType, uri) => ({
+  content: [
+    {
+      type: 'resource',
+      resource: {
+        uri,
+        mimeType,
+        blob: Buffer.isBuffer(data) ? data.toString('base64') : data,
+      },
+    },
+  ],
+});
+
+module.exports = { createSuccessResponse, createErrorResponse, createBlobResponse };

@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const { createBlobResponse } = require('./response.js');
 
 /**
  * 輸入驗證工具函數
@@ -55,19 +56,10 @@ const OPENDATA_API_BASE = 'https://opendata.judicial.gov.tw';
 const TOOLS_CONFIG = {
   auth_token: {
     name: 'auth_token',
-    description: '取得司法院裁判書查詢系統的授權 Token。支援使用環境變數中的預設帳密。',
+    description: '取得司法院裁判書查詢系統的授權 Token。帳密從環境變數 JUDICIAL_USER / JUDICIAL_PASSWORD 讀取。',
     inputSchema: {
       type: 'object',
-      properties: {
-        user: {
-          type: 'string',
-          description: '使用者帳號（可選，未提供時使用環境變數 JUDICIAL_USER）'
-        },
-        password: {
-          type: 'string',
-          description: '使用者密碼（可選，未提供時使用環境變數 JUDICIAL_PASSWORD）'
-        }
-      },
+      properties: {},
       additionalProperties: false
     }
   },
@@ -155,14 +147,14 @@ const TOOLS_CONFIG = {
           description: '從 list_resources 工具取得的檔案集 ID'
         },
         top: {
-          type: 'string',
+          type: 'integer',
           description: '限制回傳筆數（可選）',
-          pattern: '^[0-9]+$'
+          minimum: 0
         },
         skip: {
-          type: 'string',
+          type: 'integer',
           description: '跳過筆數，用於分頁（可選）',
-          pattern: '^[0-9]+$'
+          minimum: 0
         },
         token: {
           type: 'string',
@@ -176,19 +168,10 @@ const TOOLS_CONFIG = {
 
   member_token: {
     name: 'member_token',
-    description: '取得司法院開放平台的會員授權 Token，用於存取會員專屬資源。',
+    description: '取得司法院開放平台的會員授權 Token，用於存取會員專屬資源。帳密從環境變數 JUDICIAL_USER / JUDICIAL_PASSWORD 讀取。',
     inputSchema: {
       type: 'object',
-      properties: {
-        user: {
-          type: 'string',
-          description: '使用者帳號（可選，未提供時使用環境變數 JUDICIAL_USER）'
-        },
-        password: {
-          type: 'string',
-          description: '使用者密碼（可選，未提供時使用環境變數 JUDICIAL_PASSWORD）'
-        }
-      },
+      properties: {},
       additionalProperties: false
     }
   }
@@ -198,9 +181,9 @@ const TOOLS_CONFIG = {
  * 工具執行器映射
  */
 const TOOL_HANDLERS = {
-  async auth_token(args) {
-    const user = args.user || process.env.JUDICIAL_USER;
-    const password = args.password || process.env.JUDICIAL_PASSWORD;
+  async auth_token(_args) {
+    const user = process.env.JUDICIAL_USER;
+    const password = process.env.JUDICIAL_PASSWORD;
 
     if (!user || !password) {
       throw new Error('未提供使用者帳號或密碼，且環境變數 JUDICIAL_USER 或 JUDICIAL_PASSWORD 未設定');
@@ -208,11 +191,7 @@ const TOOL_HANDLERS = {
 
     try {
       const result = await axios.post(`${JUDICIAL_API_BASE}/Auth`, { user, password });
-      return {
-        success: true,
-        message: '授權成功',
-        data: result.data
-      };
+      return result.data;
     } catch (error) {
       throw new Error(`授權失敗: ${error.response?.data?.message || error.message}`);
     }
@@ -224,11 +203,7 @@ const TOOL_HANDLERS = {
 
     try {
       const result = await axios.post(`${JUDICIAL_API_BASE}/JList`, { token: args.token });
-      return {
-        success: true,
-        message: '取得裁判書異動清單成功',
-        data: result.data
-      };
+      return result.data;
     } catch (error) {
       throw new Error(`取得裁判書清單失敗: ${error.response?.data?.message || error.message}`);
     }
@@ -239,15 +214,11 @@ const TOOL_HANDLERS = {
     validateInput.token(args.token);
 
     try {
-      const result = await axios.post(`${JUDICIAL_API_BASE}/JDoc`, { 
-        token: args.token, 
-        j: args.jid 
+      const result = await axios.post(`${JUDICIAL_API_BASE}/JDoc`, {
+        token: args.token,
+        j: args.jid
       });
-      return {
-        success: true,
-        message: '取得裁判書內容成功',
-        data: result.data
-      };
+      return result.data;
     } catch (error) {
       throw new Error(`取得裁判書內容失敗: ${error.response?.data?.message || error.message}`);
     }
@@ -263,11 +234,7 @@ const TOOL_HANDLERS = {
           'Authorization': `Bearer ${args.token}`
         }
       });
-      return {
-        success: true,
-        message: '取得主題分類清單成功',
-        data: result.data
-      };
+      return result.data;
     } catch (error) {
       throw new Error(`取得主題分類清單失敗: ${error.response?.data?.message || error.message}`);
     }
@@ -284,11 +251,7 @@ const TOOL_HANDLERS = {
           'Authorization': `Bearer ${args.token}`
         }
       });
-      return {
-        success: true,
-        message: `取得分類 ${args.categoryNo} 的資料源清單成功`,
-        data: result.data
-      };
+      return result.data;
     } catch (error) {
       throw new Error(`取得資料源清單失敗: ${error.response?.data?.message || error.message}`);
     }
@@ -296,58 +259,47 @@ const TOOL_HANDLERS = {
 
   async download_file(args) {
     validateInput.required(args, ['fileSetId', 'token']);
-    validateInput.numericString(args.top, 'top');
-    validateInput.numericString(args.skip, 'skip');
     validateInput.token(args.token);
 
     try {
       const params = new URLSearchParams();
-      if (args.top) params.append('top', args.top);
-      if (args.skip) params.append('skip', args.skip);
-      
+      if (args.top != null) params.append('top', String(args.top));
+      if (args.skip != null) params.append('skip', String(args.skip));
+
       let url = `${OPENDATA_API_BASE}/api/FilesetLists/${args.fileSetId}/file`;
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
-      
+
       const result = await axios.get(url, {
         responseType: 'arraybuffer',
         headers: {
           'Authorization': `Bearer ${args.token}`
         }
       });
-      return {
-        success: true,
-        message: '檔案下載成功',
-        data: {
-          size: result.data.length,
-          contentType: result.headers['content-type'],
-          base64: Buffer.from(result.data).toString('base64')
-        }
-      };
+
+      const mimeType = result.headers['content-type'] || 'application/octet-stream';
+      const uri = `data:${mimeType};base64`;
+      return createBlobResponse(Buffer.from(result.data), mimeType, uri);
     } catch (error) {
       throw new Error(`檔案下載失敗: ${error.response?.data?.message || error.message}`);
     }
   },
 
-  async member_token(args) {
-    const user = args.user || process.env.JUDICIAL_USER;
-    const password = args.password || process.env.JUDICIAL_PASSWORD;
+  async member_token(_args) {
+    const user = process.env.JUDICIAL_USER;
+    const password = process.env.JUDICIAL_PASSWORD;
 
     if (!user || !password) {
       throw new Error('未提供使用者帳號或密碼，且環境變數 JUDICIAL_USER 或 JUDICIAL_PASSWORD 未設定');
     }
 
     try {
-      const result = await axios.post(`${OPENDATA_API_BASE}/api/MemberTokens`, { 
+      const result = await axios.post(`${OPENDATA_API_BASE}/api/MemberTokens`, {
         memberAccount: user,
         pwd: password
       });
-      return {
-        success: true,
-        message: '開放平台會員授權成功',
-        data: result.data
-      };
+      return result.data;
     } catch (error) {
       throw new Error(`會員授權失敗: ${error.response?.data?.message || error.message}`);
     }

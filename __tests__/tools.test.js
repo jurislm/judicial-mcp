@@ -23,15 +23,13 @@ describe('Tools 模組測試', () => {
   });
 
   describe('TOOL_HANDLERS.auth_token', () => {
-    test('成功取得授權 Token', async () => {
+    test('成功取得授權 Token — 回傳 API 原始資料', async () => {
       const mockResponse = { data: { token: 'test_token_123' } };
       mockedAxios.post.mockResolvedValueOnce(mockResponse);
 
       const result = await TOOL_HANDLERS.auth_token({});
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('授權成功');
-      expect(result.data).toEqual(mockResponse.data);
+
+      expect(result).toEqual(mockResponse.data);
     });
 
     test('缺少帳號密碼時拋出錯誤', async () => {
@@ -62,14 +60,13 @@ describe('Tools 模組測試', () => {
   });
 
   describe('TOOL_HANDLERS.list_judgments', () => {
-    test('成功取得裁判書清單', async () => {
+    test('成功取得裁判書清單 — 回傳 API 原始資料', async () => {
       const mockResponse = { data: [{ id: '1', title: 'Test Judgment' }] };
       mockedAxios.post.mockResolvedValueOnce(mockResponse);
 
       const result = await TOOL_HANDLERS.list_judgments({ token: 'valid_token' });
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('取得裁判書異動清單成功');
+
+      expect(result).toEqual(mockResponse.data);
     });
 
     test('Token 為空時拋出錯誤', async () => {
@@ -107,17 +104,16 @@ describe('Tools 模組測試', () => {
   });
 
   describe('TOOL_HANDLERS.get_judgment', () => {
-    test('成功取得裁判書內容', async () => {
+    test('成功取得裁判書內容 — 回傳 API 原始資料', async () => {
       const mockResponse = { data: { content: 'Judgment content' } };
       mockedAxios.post.mockResolvedValueOnce(mockResponse);
 
-      const result = await TOOL_HANDLERS.get_judgment({ 
-        token: 'valid_token', 
-        jid: 'judgment_id' 
+      const result = await TOOL_HANDLERS.get_judgment({
+        token: 'valid_token',
+        jid: 'judgment_id'
       });
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('取得裁判書內容成功');
+
+      expect(result).toEqual(mockResponse.data);
     });
 
     test('缺少必要參數時拋出錯誤', async () => {
@@ -151,14 +147,13 @@ describe('Tools 模組測試', () => {
   });
 
   describe('TOOL_HANDLERS.list_categories', () => {
-    test('成功取得主題分類清單', async () => {
+    test('成功取得主題分類清單 — 回傳 API 原始資料', async () => {
       const mockResponse = { data: [{ id: '1', name: 'Category 1' }] };
       mockedAxios.get.mockResolvedValueOnce(mockResponse);
 
       const result = await TOOL_HANDLERS.list_categories({ token: 'test-token' });
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('取得主題分類清單成功');
+
+      expect(result).toEqual(mockResponse.data);
     });
 
     test('API 請求失敗時拋出錯誤', async () => {
@@ -181,14 +176,13 @@ describe('Tools 模組測試', () => {
   });
 
   describe('TOOL_HANDLERS.list_resources', () => {
-    test('成功取得資料源清單', async () => {
+    test('成功取得資料源清單 — 回傳 API 原始資料', async () => {
       const mockResponse = { data: [{ id: '1', name: 'Resource 1' }] };
       mockedAxios.get.mockResolvedValueOnce(mockResponse);
 
       const result = await TOOL_HANDLERS.list_resources({ categoryNo: 'CAT001', token: 'test-token' });
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('取得分類 CAT001 的資料源清單成功');
+
+      expect(result).toEqual(mockResponse.data);
     });
 
     test('缺少必要參數時拋出錯誤', async () => {
@@ -216,17 +210,21 @@ describe('Tools 模組測試', () => {
   });
 
   describe('TOOL_HANDLERS.download_file', () => {
-    test('成功下載檔案', async () => {
-      const mockResponse = { 
-        data: 'file content',
+    test('成功下載檔案 — 回傳 MCP resource 內容類型', async () => {
+      const fileData = Buffer.from('file content');
+      const mockResponse = {
+        data: fileData,
         headers: { 'content-type': 'application/octet-stream' }
       };
       mockedAxios.get.mockResolvedValueOnce(mockResponse);
 
       const result = await TOOL_HANDLERS.download_file({ fileSetId: 'FILE001', token: 'test-token' });
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('檔案下載成功');
+
+      // 回傳 MCP 規範的 resource content type（二進位資料用 blob）
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0].type).toBe('resource');
+      expect(result.content[0].resource.blob).toBeDefined();
+      expect(result.content[0].resource.mimeType).toBe('application/octet-stream');
     });
 
     test('API 請求失敗時拋出錯誤', async () => {
@@ -247,34 +245,33 @@ describe('Tools 模組測試', () => {
         .rejects.toThrow('檔案下載失敗: Network Error');
     });
 
-    test('無效的 top 參數時拋出錯誤', async () => {
-      await expect(TOOL_HANDLERS.download_file({ 
-        fileSetId: 'FILE001',
-        token: 'test-token',
-        top: 'invalid_number' 
-      }))
-        .rejects.toThrow('top 必須是數字字串');
-    });
+    test('top 與 skip 接受整數', async () => {
+      const fileData = Buffer.from('file content');
+      const mockResponse = {
+        data: fileData,
+        headers: { 'content-type': 'application/json' }
+      };
+      mockedAxios.get.mockResolvedValueOnce(mockResponse);
 
-    test('無效的 skip 參數時拋出錯誤', async () => {
-      await expect(TOOL_HANDLERS.download_file({ 
+      const result = await TOOL_HANDLERS.download_file({
         fileSetId: 'FILE001',
         token: 'test-token',
-        skip: 'invalid_number' 
-      }))
-        .rejects.toThrow('skip 必須是數字字串');
+        top: 10,
+        skip: 0
+      });
+
+      expect(result.content[0].type).toBe('resource');
     });
   });
 
   describe('TOOL_HANDLERS.member_token', () => {
-    test('成功取得會員 Token', async () => {
+    test('成功取得會員 Token — 回傳 API 原始資料', async () => {
       const mockResponse = { data: { token: 'member_token_123' } };
       mockedAxios.post.mockResolvedValueOnce(mockResponse);
 
       const result = await TOOL_HANDLERS.member_token({});
-      
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('開放平台會員授權成功');
+
+      expect(result).toEqual(mockResponse.data);
     });
 
     test('API 請求失敗時拋出錯誤', async () => {
@@ -316,31 +313,14 @@ describe('Tools 模組測試', () => {
   });
 
   describe('驗證工具函數測試', () => {
-    test('numericString 驗證 - 有效數字字串', () => {
-      // 由於 validateInput 不是導出的，我們通過間接方式測試
-      // 測試 download_file 工具中的 top 和 skip 參數驗證
-      expect(() => {
-        // 這會間接測試 numericString 驗證函數
-      }).not.toThrow();
-    });
+    test('所有工具的 token 欄位驗證', async () => {
+      // 空 token 應被 required 攔截
+      await expect(TOOL_HANDLERS.list_judgments({ token: '' }))
+        .rejects.toThrow('缺少必要參數: token');
 
-    test('numericString 驗證 - 無效數字字串會拋出錯誤', async () => {
-      // 通過調用 download_file 並提供無效的 top 參數來測試
-      const mockResponse = { 
-        data: 'file content',
-        headers: { 'content-type': 'application/octet-stream' }
-      };
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
-
-      // 這個測試實際上會驗證參數，但在當前版本中，參數驗證可能沒有實現
-      const result = await TOOL_HANDLERS.download_file({ 
-        fileSetId: 'FILE001',
-        token: 'test-token',
-        top: '123', // 有效的數字字串
-        skip: '456' // 有效的數字字串
-      });
-      
-      expect(result.success).toBe(true);
+      // 空格 token 應被 token validator 攔截
+      await expect(TOOL_HANDLERS.list_judgments({ token: '   ' }))
+        .rejects.toThrow('無效的授權 Token');
     });
   });
 });
