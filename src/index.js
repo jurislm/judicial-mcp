@@ -16,7 +16,8 @@ const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const { TOOLS_CONFIG, TOOL_HANDLERS } = require('./tools.js');
-
+const { createSuccessResponse, createErrorResponse } = require('./response.js');
+const { version } = require('../package.json');
 
 /**
  * MCP 伺服器實例
@@ -24,7 +25,7 @@ const { TOOLS_CONFIG, TOOL_HANDLERS } = require('./tools.js');
 const server = new Server(
   {
     name: 'judicial-mcp',
-    version: '1.2.6',
+    version,
   },
   {
     capabilities: {
@@ -34,32 +35,11 @@ const server = new Server(
 );
 
 /**
- * 統一的錯誤處理函數
- * @param {Error} error - 錯誤物件
- * @param {string} message - 自訂錯誤訊息
- * @returns {Object} 標準化錯誤回應
- */
-const handleError = (error, message) => {
-  const errorDetail = error.response?.data || error.message;
-  console.error(`${message}:`, errorDetail);
-  
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `錯誤: ${message}\n詳細資訊: ${JSON.stringify(errorDetail, null, 2)}`
-      }
-    ]
-  };
-};
-
-
-/**
  * 列出所有可用的工具
  */
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
-    tools: Object.values(TOOLS_CONFIG)
+    tools: Object.values(TOOLS_CONFIG),
   };
 });
 
@@ -70,24 +50,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
-    // 檢查工具是否存在
     if (!TOOL_HANDLERS[name]) {
       throw new Error(`未知的工具: ${name}`);
     }
 
-    // 執行工具處理器
     const result = await TOOL_HANDLERS[name](args || {});
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `${result.message}\n\n${JSON.stringify(result.data, null, 2)}`
-        }
-      ]
-    };
+    return createSuccessResponse(result);
   } catch (error) {
-    return handleError(error, `執行工具 ${name} 時發生錯誤`);
+    console.error(`執行工具 ${name} 時發生錯誤:`, error?.message);
+    return createErrorResponse(error, `執行工具 ${name} 時發生錯誤`);
   }
 });
 

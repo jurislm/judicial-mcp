@@ -1,20 +1,21 @@
 # @jurislm/judicial-mcp
 
-MCP (Model Context Protocol) server for [Taiwan Judicial Yuan](https://www.judicial.gov.tw) — provides 6 tools for accessing open data and judgments via natural language.
+MCP (Model Context Protocol) server for [Taiwan Judicial Yuan](https://www.judicial.gov.tw) — provides 7 tools for accessing open data and judgments via natural language.
 
 ## Tools
 
-### Authentication (1 tool)
-- `auth_token` — Get authorization token (uses `JUDICIAL_USER` / `JUDICIAL_PASSWORD` env vars by default)
+### Authentication (2 tools)
+- `auth_token` — Get authorization token for judgment API (uses `JUDICIAL_USER` / `JUDICIAL_PASSWORD` env vars by default)
+- `member_token` — Get member token for open data API (uses `JUDICIAL_USER` / `JUDICIAL_PASSWORD` env vars by default)
 
 ### Judgments (2 tools)
-- `list_judgments` — Get judgment change list (requires token)
-- `get_judgment` — Get judgment content by JID (requires token)
+- `list_judgments` — Get judgment change list (requires `auth_token`)
+- `get_judgment` — Get judgment content by JID (requires `auth_token`)
 
 ### Open Data (3 tools)
-- `list_categories` — List topic categories
-- `list_resources` — List data sources for a category (requires `categoryNo`)
-- `download_file` — Download a data file with pagination support (requires `fileSetId`)
+- `list_categories` — List topic categories (requires `member_token`)
+- `list_resources` — List data sources for a category (requires `member_token` + `categoryNo`)
+- `download_file` — Download a data file with pagination support (requires `member_token` + `fileSetId`)
 
 ## Setup
 
