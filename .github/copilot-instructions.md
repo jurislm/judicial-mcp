@@ -1,25 +1,100 @@
-# Copilot Instructions
+# Copilot Instructions for judicial-mcp
 
-## 語言與執行環境
-- 此專案使用 Node.js（CommonJS，`require`/`module.exports`），不使用 TypeScript 或 ESM
-- 不建議使用 `import`/`export` 語法
-- 此為台灣司法院公開資料的 MCP Server
+## Project Overview
 
-## 程式碼風格
-- 預設使用 `const`；僅在需要重新賦值時使用 `let`，不使用 `var`
-- 非同步函式統一使用 `async/await`，避免 `.then()` chain
-- 下劃線前綴（`_param`）表示刻意不使用的參數，ESLint 允許此模式
+`judicial-mcp` 是台灣司法院公開資料的 MCP (Model Context Protocol) Server，提供 7 個工具存取裁判書全文與開放資料平台。使用 Node.js **CommonJS**（非 TypeScript、非 ESM）。
 
-## 測試
-- 測試框架為 Jest，新功能必須附帶單元測試
-- 不建議使用 Vitest 特有 API（如 `vi.fn()`），統一使用 `jest.fn()`
+## Git Workflow
+
+- **Development branch**: `develop` — all feature work happens here
+- **Release branch**: `main` — receives changes via **squash merge** from `develop`
+- **Versioning**: Managed by Release Please. Do NOT suggest manual version bumps.
+
+## Runtime: Node.js CommonJS
+
+- 使用 `require()`/`module.exports`，**禁止** `import`/`export`
+- 禁止建議轉換為 TypeScript 或 ESM
+
+## Build & Test
+
+```bash
+node src/index.js          # 啟動 MCP server（stdio transport）
+npm test                   # Jest 測試
+npm run lint               # ESLint
+```
+
+Required environment variables:
+
+```bash
+export JUDICIAL_USER=<帳號>
+export JUDICIAL_PASSWORD=<密碼>
+```
+
+## Tool Definitions (7 tools)
+
+所有工具定義在 `src/tools.js` 的 `TOOLS_CONFIG`，handler 在 `TOOL_HANDLERS`：
+
+### 裁判書查詢 API（`data.judicial.gov.tw/jdg/api`）
+
+| Tool | Auth | Description |
+|------|------|-------------|
+| `auth_token` | env JUDICIAL_USER/PASSWORD | 取得裁判書系統授權 Token |
+| `list_judgments` | token | 取得裁判書異動清單（新增/修改/刪除） |
+| `get_judgment` | token + jid | 取得特定裁判書全文 |
+
+### 開放資料平台（`opendata.judicial.gov.tw`）
+
+| Tool | Auth | Description |
+|------|------|-------------|
+| `member_token` | env JUDICIAL_USER/PASSWORD | 取得開放平台會員 Token（Bearer） |
+| `list_categories` | Bearer token | 取得所有主題分類 |
+| `list_resources` | Bearer token + categoryNo | 取得指定分類的資料源 |
+| `download_file` | Bearer token + fileSetId | 下載資料檔案（支援分頁 top/skip） |
+
+## 兩套 API 的差異
+
+| 系統 | Base URL | 認證方式 | Token 取得 |
+|------|----------|----------|-----------|
+| 裁判書系統 | `data.judicial.gov.tw/jdg/api` | POST body `token` 欄位 | `auth_token` |
+| 開放資料平台 | `opendata.judicial.gov.tw` | HTTP Header `Authorization: Bearer <token>` | `member_token` |
+
+## Code Patterns
+
+### 回應格式
+
+- 一般工具：回傳 `createSuccessResponse(data)`
+- 檔案下載：`download_file` 直接回傳 MCP resource 格式（含 `content` 陣列）
+- 錯誤：`createErrorResponse(error, message)` — 定義在 `src/response.js`
+
+### 輸入驗證
+
+使用 `src/tools.js` 中的 `validateInput` 物件：
+- `validateInput.required(params, ['token', 'jid'])` — 必要參數檢查
+- `validateInput.token(token)` — Token 格式驗證
+- `validateInput.numericString(value, fieldName)` — 數字字串格式
+
+### 日誌輸出
+
+`stdout` 保留給 MCP protocol，所有日誌輸出到 `stderr`：
+```javascript
+// index.js 頂層已全域重定向
+console.log = console.info = console.warn = (...args) => process.stderr.write(args.join(' ') + '\n');
+```
 
 ## Code Review 重點
-- 標記任何 `eval()` 或 `new Function()` 使用為安全疑慮
-- 用戶輸入直接拼接到字串中（潛在 injection）需標記
-- `async` 函式缺少 try/catch 或 `.catch()` 需提醒（unhandled rejection 風險）
-- 日期格式驗證需特別注意（司法院資料的日期格式多變）
+
+- **日期格式驗證**：司法院資料常見日期格式問題——民國年（ROC，需 +1911 轉換）、CRLF 行尾、多段 JID（如 `110-訴-1234`）
+- **禁止** `eval()`、`new Function()`
+- **JUDICIAL_USER** / **JUDICIAL_PASSWORD** 禁止 hardcode
+- 用戶輸入直接拼接到 URL path（`/categories/${id}/resources`）需確認 `encodeURIComponent`
+- `async` 函式缺少 try/catch 需提醒
+
+## Testing
+
+- 測試框架：Jest（`jest.fn()`、`jest.mock()`），禁止 Vitest API
+- 測試檔案在 `__tests__/`
 
 ## 忽略範圍
-- 不審查 `node_modules/`、`dist/`、`coverage/` 目錄下的檔案
+
+- 不審查 `node_modules/`、`coverage/` 目錄
 - 不對自動生成的 mock 檔案提出風格建議
