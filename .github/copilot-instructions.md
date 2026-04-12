@@ -1,3 +1,5 @@
+請使用繁體中文回覆所有問題與建議。
+
 # Copilot Instructions for judicial-mcp
 
 ## Project Overview
@@ -78,7 +80,8 @@ export JUDICIAL_PASSWORD=<密碼>
 `stdout` 保留給 MCP protocol，所有日誌輸出到 `stderr`：
 ```javascript
 // index.js 頂層已全域重定向
-console.log = console.info = console.warn = (...args) => process.stderr.write(args.join(' ') + '\n');
+console.log = console.info = console.warn = (...args) => process.stderr.write(args.join(' ') + '
+');
 ```
 
 ## Code Review 重點
