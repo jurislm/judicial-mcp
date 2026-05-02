@@ -1,0 +1,52 @@
+schema: spec-driven
+
+context: |
+  Project: @jurislm/judicial-mcp v1.4.0
+  MCP Server for Taiwan Judicial Yuan (司法院) open data and judgments.
+
+  Tech stack:
+    - Runtime: Bun >=1.1.0
+    - Language: JavaScript (CommonJS, no TypeScript)
+    - MCP SDK: @modelcontextprotocol/sdk ^1.29.0
+    - HTTP client: axios ^1.6.0
+    - Testing: Jest 29
+    - Linting: ESLint 9 + eslint-config-prettier
+    - Package manager: bun@1.3.9
+
+  Source layout:
+    src/index.js   — MCP server entry point, tool registration
+    src/tools.js   — tool handlers (7 tools)
+    src/response.js — response formatting utilities
+    bin/judicial-mcp.js — CLI entry point
+    types/index.d.ts    — TypeScript type declarations
+
+  Tools (7 total):
+    Authentication: auth_token, member_token
+    Judgments: list_judgments, get_judgment
+    Open Data: list_categories, list_resources, download_file
+
+  Environment variables:
+    JUDICIAL_USER, JUDICIAL_PASSWORD
+
+  Conventions:
+    - Conventional Commits (feat/fix/chore/ci/refactor/docs)
+    - Release Please manages version bumps automatically
+    - No manual edits to package.json version
+    - Branch workflow: develop → PR → main (never push directly to main)
+    - Worktree: develop work happens in .worktrees/develop
+    - Tests must pass + lint clean before publish (prepublishOnly hook)
+    - Use bun -e for inline scripts, never python3 -c
+    - No TypeScript — stay in plain JS to match current codebase
+
+rules:
+  proposal:
+    - Keep proposals under 400 words
+    - Include a "Non-goals" section
+    - State which of the 7 tools are affected
+  design:
+    - Specify changes to src/tools.js, src/index.js, or src/response.js explicitly
+    - Note any new environment variables required
+  tasks:
+    - Each task must be completable in under 2 hours
+    - Include a test task for every implementation task
+    - Tests use Jest; run with `bun run test`
