@@ -71,8 +71,6 @@ package-lock.json
 yarn.lock
 
 # Claude
-mcp.json
-.mcp.json
 
 # Git worktrees
 .worktrees/
