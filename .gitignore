@@ -52,6 +52,7 @@ logs
 # 建置輸出
 dist/
 build/
+types/
 
 # 臨時檔案
 tmp/
