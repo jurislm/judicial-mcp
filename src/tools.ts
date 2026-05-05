@@ -28,11 +28,12 @@ const validateInput = {
 // ─── Error helper ────────────────────────────────────────────────────────────
 
 function apiErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
   if (error !== null && typeof error === 'object') {
     const e = error as { response?: { data?: { message?: string } }; message?: string }
-    return e.response?.data?.message ?? e.message ?? String(error)
+    if (e.response?.data?.message) return e.response.data.message
+    if (e.message) return e.message
   }
+  if (error instanceof Error) return error.message
   return String(error)
 }
 
