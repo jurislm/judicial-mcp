@@ -71,7 +71,6 @@ package-lock.json
 yarn.lock
 
 # Claude
-.claude/
 mcp.json
 .mcp.json
 
