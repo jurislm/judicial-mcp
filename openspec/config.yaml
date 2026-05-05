@@ -6,19 +6,19 @@ context: |
 
   Tech stack:
     - Runtime: Bun >=1.1.0
-    - Language: JavaScript (CommonJS, no TypeScript)
+    - Language: TypeScript (ESM, strict mode)
     - MCP SDK: @modelcontextprotocol/sdk ^1.29.0
     - HTTP client: axios ^1.6.0
-    - Testing: Jest 29
+    - Testing: Vitest 3
     - Linting: ESLint 9 + eslint-config-prettier
     - Package manager: bun@1.3.9
 
   Source layout:
-    src/index.js   — MCP server entry point, tool registration
-    src/tools.js   — tool handlers (7 tools)
-    src/response.js — response formatting utilities
-    bin/judicial-mcp.js — CLI entry point
-    types/index.d.ts    — TypeScript type declarations
+    src/index.ts   — MCP server entry point, tool registration
+    src/tools.ts   — tool handlers (7 tools) with typed Args interfaces
+    src/response.ts — response formatting utilities
+    bin/judicial-mcp.ts — CLI entry point (Bun-native, no build step)
+    types/          — auto-generated .d.ts (via tsc --emitDeclarationOnly, gitignored)
 
   Tools (7 total):
     Authentication: auth_token, member_token
@@ -34,9 +34,10 @@ context: |
     - No manual edits to package.json version
     - Branch workflow: develop → PR → main (never push directly to main)
     - Worktree: develop work happens in .worktrees/develop
-    - Tests must pass + lint clean before publish (prepublishOnly hook)
+    - Tests must pass + typecheck + lint clean before publish (prepublishOnly hook)
     - Use bun -e for inline scripts, never python3 -c
-    - No TypeScript — stay in plain JS to match current codebase
+    - All handler args must have explicit TypeScript interfaces (no implicit any)
+    - All catch blocks use unknown narrowing via apiErrorMessage() helper
 
 rules:
   proposal:
@@ -44,9 +45,9 @@ rules:
     - Include a "Non-goals" section
     - State which of the 7 tools are affected
   design:
-    - Specify changes to src/tools.js, src/index.js, or src/response.js explicitly
+    - Specify changes to src/tools.ts, src/index.ts, or src/response.ts explicitly
     - Note any new environment variables required
   tasks:
     - Each task must be completable in under 2 hours
     - Include a test task for every implementation task
-    - Tests use Jest; run with `bun run test`
+    - Tests use Vitest; run with `bun run test`

@@ -10,14 +10,14 @@ module.exports = [
   {
     languageOptions: {
       ecmaVersion: 'latest',
-      sourceType: 'commonjs',
-      globals: { ...globals.node, ...globals.jest },
+      sourceType: 'module',
+      globals: { ...globals.node },
     },
     rules: {
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', '.worktrees/', 'coverage/'],
+    ignores: ['dist/', 'node_modules/', '.worktrees/', 'coverage/', 'types/'],
   },
 ];
