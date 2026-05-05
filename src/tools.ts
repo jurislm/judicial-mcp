@@ -3,10 +3,10 @@ import { createBlobResponse } from './response.js'
 
 // ─── Arg interfaces ──────────────────────────────────────────────────────────
 
-interface TokenArgs { token: string }
-interface GetJudgmentArgs { token: string; jid: string }
-interface ListResourcesArgs { categoryNo: string; token: string }
-interface DownloadFileArgs { fileSetId: string; token: string; top?: number; skip?: number }
+export interface TokenArgs { token: string }
+export interface GetJudgmentArgs { token: string; jid: string }
+export interface ListResourcesArgs { categoryNo: string; token: string }
+export interface DownloadFileArgs { fileSetId: string; token: string; top?: number; skip?: number }
 
 // ─── Input validation ────────────────────────────────────────────────────────
 
@@ -28,11 +28,11 @@ const validateInput = {
 // ─── Error helper ────────────────────────────────────────────────────────────
 
 function apiErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
   if (error !== null && typeof error === 'object') {
     const e = error as { response?: { data?: { message?: string } }; message?: string }
     return e.response?.data?.message ?? e.message ?? String(error)
   }
-  if (error instanceof Error) return error.message
   return String(error)
 }
 
