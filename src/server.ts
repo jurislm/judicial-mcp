@@ -28,11 +28,14 @@ export async function dispatchTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<McpToolResult> {
-  if (!TOOL_HANDLERS[name]) {
+  const handler = Object.prototype.hasOwnProperty.call(TOOL_HANDLERS, name)
+    ? TOOL_HANDLERS[name]
+    : undefined
+  if (!handler) {
     throw new Error(`未知的工具: ${name}`)
   }
 
-  const result = await TOOL_HANDLERS[name](args)
+  const result = await handler(args)
 
   if (
     result !== null &&
