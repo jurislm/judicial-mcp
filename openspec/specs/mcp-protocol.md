@@ -83,11 +83,11 @@ THEN  回傳 {
 
 ```
 GIVEN TOOL_HANDLERS[name] 存在
-WHEN  工具 handler 回傳值的 result?.content 為 Array
+WHEN  工具 handler 回傳值的 content[0].type === 'resource'（即 createBlobResponse 的輸出）
 THEN  直接 return result（download_file 的 blob 路徑，繞過 createSuccessResponse）
 
 GIVEN TOOL_HANDLERS[name] 存在
-WHEN  工具 handler 回傳值不具備 content Array 結構
+WHEN  工具 handler 回傳值不符合上述 blob 格式（包含 raw API data 或含 content[] 的 JSON 物件）
 THEN  return createSuccessResponse(result)
 
 GIVEN TOOL_HANDLERS[name] 不存在
