@@ -2,8 +2,18 @@
 // 覆寫必須在所有 import 模組初始化之前生效。
 // ESM static import 會被 hoist 至頂層程式碼之前執行，因此這裡不放任何 static import，
 // 改用 dynamic import 確保覆寫先於所有依賴模組的初始化。
+const safeSerialize = (value: unknown): string => {
+  if (typeof value === 'string') return value
+  try {
+    const s = JSON.stringify(value)
+    return s === undefined ? String(value) : s
+  } catch {
+    return String(value)
+  }
+}
+
 console.log = console.info = console.warn = (...args: unknown[]) =>
-  process.stderr.write(args.join(' ') + '\n')
+  process.stderr.write(args.map(safeSerialize).join(' ') + '\n')
 
 await import('./server.js')
 

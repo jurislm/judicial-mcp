@@ -33,7 +33,6 @@ function apiErrorMessage(error: unknown): string {
     if (e.response?.data?.message) return e.response.data.message
     if (e.message) return e.message
   }
-  if (error instanceof Error) return error.message
   return String(error)
 }
 
@@ -230,7 +229,7 @@ export const TOOL_HANDLERS: Record<string, (_args: Record<string, unknown>) => P
         responseType: 'arraybuffer',
         headers: { Authorization: `Bearer ${typed.token}` },
       })
-      const mimeType = (result.headers['content-type'] as string) || 'application/octet-stream'
+      const mimeType = ((result.headers['content-type'] as string) ?? '').split(';')[0].trim() || 'application/octet-stream'
       const uri = `data:${mimeType};base64`
       return createBlobResponse(Buffer.from(result.data as ArrayBuffer), mimeType, uri)
     } catch (error: unknown) {

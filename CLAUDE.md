@@ -29,13 +29,14 @@ bun run build:types
 
 ## 架構概觀
 
-這是一個 TypeScript ESM MCP Server，透過 **stdio transport** 與 MCP client 通訊。只有 3 個核心模組：
+這是一個 TypeScript ESM MCP Server，透過 **stdio transport** 與 MCP client 通訊。4 個核心模組：
 
 ```
 src/
-  index.ts    — MCP Server 入口，註冊 ListTools / CallTool 兩個 handler
+  index.ts    — Bootstrap：重定向 console.log/info/warn 至 stderr，再 dynamic import server.js
+  server.ts   — MCP Server 入口：建立 Server、註冊 ListTools / CallTool handler、啟動 transport
   tools.ts    — 所有工具定義（TOOLS_CONFIG）與執行器（TOOL_HANDLERS）
-  response.ts — MCP 回應格式工具（success / error / blob）
+  response.ts — MCP 回應格式工具（createSuccessResponse / createErrorResponse / createBlobResponse）
 ```
 
 ### 兩套上游 API
@@ -53,7 +54,7 @@ MCP 使用 stdio transport，**stdout 只能輸出 JSON-RPC 訊息**。`index.ts
 
 ### download_file 的特殊回傳格式
 
-其他 6 個 handler 回傳原始資料，由 `index.ts` 統一包成 `createSuccessResponse`。`download_file` 例外：直接回傳 `createBlobResponse`（MCP resource content type，含 base64 blob），`index.ts` 偵測到 `result.content` 是陣列時不再二次包裝。
+其他 6 個 handler 回傳原始資料，由 `server.ts` 的 `dispatchTool()` 統一包成 `createSuccessResponse`。`download_file` 例外：直接回傳 `createBlobResponse`（MCP resource content type，含 base64 blob），`dispatchTool()` 偵測到 `result.content[0].type === 'resource'` 時不再二次包裝。
 
 ## 測試架構
 

@@ -14,7 +14,8 @@ context: |
     - Package manager: bun@1.3.9
 
   Source layout:
-    src/index.ts   — MCP server entry point, tool registration
+    src/index.ts   — Bootstrap: console.* → stderr override, then dynamic import('./server.js')
+    src/server.ts  — MCP Server wiring (tool routing, protocol handlers, stdio transport)
     src/tools.ts   — tool handlers (7 tools) with typed Args interfaces
     src/response.ts — response formatting utilities
     bin/judicial-mcp.ts — CLI entry point (Bun-native, no build step)

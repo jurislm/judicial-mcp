@@ -26,7 +26,7 @@ auth_token → list_judgments(token) → 取得 jid → get_judgment(token, jid)
 
 ## Behavior
 
-### list_judgments（`src/tools.js:200`）
+### list_judgments（`src/tools.ts:163`）
 
 ```
 GIVEN client 持有有效的 auth_token
@@ -47,7 +47,7 @@ THEN  拋出 Error: `取得裁判書清單失敗: ${error.response?.data?.messag
       由 createErrorResponse 包裝，isError: true
 ```
 
-### get_judgment（`src/tools.js:212`）
+### get_judgment（`src/tools.ts:175`）
 
 ```
 GIVEN client 持有有效的 auth_token 與從 list_judgments 取得的 jid
@@ -55,7 +55,7 @@ WHEN  client 呼叫 get_judgment，傳入 { token, jid }
 THEN  validateInput.required(args, ['token', 'jid'])
       validateInput.token(args.token)
       POST https://data.judicial.gov.tw/jdg/api/JDoc { token, j: jid }
-      注意：上游參數鍵名為 'j'，非 'jid'（見 src/tools.js:219）
+      注意：上游參數鍵名為 'j'，非 'jid'（見 src/tools.ts:182）
       回傳上游回應原始 data，由 createSuccessResponse 包裝
 
 GIVEN token 或 jid 任一缺少
@@ -101,12 +101,12 @@ THEN  拋出 Error: `取得裁判書內容失敗: ${error.response?.data?.messag
 ## Implementation Note
 
 `get_judgment` 傳送給上游的 request body 使用 `j` 作為裁判書 ID 的鍵名
-（`{ token: args.token, j: args.jid }`，`src/tools.js:218-219`），
+（`{ token: args.token, j: args.jid }`，`src/tools.ts:181-182`），
 與 inputSchema 中的 `jid` 欄位名稱不同。
 
 ## Dependencies
 
-- `src/response.js` — `createSuccessResponse`、`createErrorResponse`（見 [mcp-protocol.md](./mcp-protocol.md)）
+- `src/response.ts` — `createSuccessResponse`、`createErrorResponse`（見 [mcp-protocol.md](./mcp-protocol.md)）
 - `auth_token` 工具（見 [authentication.md](./authentication.md)）
 
 ## Non-goals
