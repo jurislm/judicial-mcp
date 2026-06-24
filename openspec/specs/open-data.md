@@ -85,7 +85,7 @@ GIVEN top 或 skip 未提供
 THEN  對應 URLSearchParams 欄位不附加，不影響其他參數
 
 GIVEN 上游回傳非 2xx
-THEN  拋出 Error: `檔案下載失敗: ${error.response?.data?.message || error.message}`
+THEN  拋出 Error: `檔案下載失敗: ${apiErrorMessage(error)}`
       由 createErrorResponse 包裝，isError: true
 ```
 

@@ -17,7 +17,7 @@
 
 ## Architecture
 
-```
+```text
 src/index.ts          — Bootstrap：先覆寫 console.* → stderr，再 dynamic import('./server.js')
 src/server.ts         — MCP Server 主程式（啟動、工具路由、協議錯誤處理、stdio transport）
 src/tools.ts          — TOOLS_CONFIG（工具定義）+ TOOL_HANDLERS（工具執行器）+ validateInput + apiErrorMessage
@@ -58,12 +58,12 @@ types/                — 自動產生的 .d.ts（tsc --emitDeclarationOnly，gi
 ## Typical Call Flows
 
 **裁判書查詢**
-```
+```text
 auth_token → list_judgments → get_judgment(jid)
 ```
 
 **開放資料下載**
-```
+```text
 member_token → list_categories → list_resources(categoryNo) → download_file(fileSetId)
 ```
 
