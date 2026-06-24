@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { TOOLS_CONFIG, TOOL_HANDLERS } from './tools.js'
-import { createSuccessResponse, createErrorResponse } from './response.js'
+import { createSuccessResponse, createErrorResponse, type McpToolResult } from './response.js'
 import { createRequire } from 'module'
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string }
@@ -24,27 +24,32 @@ server.onerror = (error: unknown) => {
   console.error('MCP 協議錯誤:', error instanceof Error ? error.message : error)
 }
 
+export async function dispatchTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<McpToolResult> {
+  if (!TOOL_HANDLERS[name]) {
+    throw new Error(`未知的工具: ${name}`)
+  }
+
+  const result = await TOOL_HANDLERS[name](args)
+
+  if (
+    result !== null &&
+    typeof result === 'object' &&
+    'content' in result &&
+    Array.isArray((result as { content: unknown }).content) &&
+    (result as { content: Array<{ type?: string }> }).content[0]?.type === 'resource'
+  ) {
+    return result as McpToolResult
+  }
+  return createSuccessResponse(result)
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params
-
   try {
-    if (!TOOL_HANDLERS[name]) {
-      throw new Error(`未知的工具: ${name}`)
-    }
-
-    const result = await TOOL_HANDLERS[name](
-      (args ?? {}) as Record<string, unknown>,
-    )
-
-    if (
-      result !== null &&
-      typeof result === 'object' &&
-      'content' in result &&
-      Array.isArray((result as { content: unknown }).content)
-    ) {
-      return result
-    }
-    return createSuccessResponse(result)
+    return await dispatchTool(name, (args ?? {}) as Record<string, unknown>)
   } catch (error: unknown) {
     console.error(`執行工具 ${name} 時發生錯誤:`, error instanceof Error ? error.message : error)
     return createErrorResponse(error, `執行工具 ${name} 時發生錯誤`)

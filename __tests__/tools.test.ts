@@ -1,13 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import axios from 'axios'
-import {
-  TOOLS_CONFIG,
-  TOOL_HANDLERS,
-  type TokenArgs,
-  type GetJudgmentArgs,
-  type ListResourcesArgs,
-  type DownloadFileArgs,
-} from '../src/tools.js'
+import { TOOLS_CONFIG, TOOL_HANDLERS } from '../src/tools.js'
 
 vi.mock('axios')
 const mockedAxios = vi.mocked(axios, true)
@@ -60,7 +53,7 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: [{ id: '1', title: 'Test Judgment' }] }
       mockedAxios.post.mockResolvedValueOnce(mockResponse)
 
-      const args: TokenArgs = { token: 'valid_token' }
+      const args = { token: 'valid_token' }
       const result = await TOOL_HANDLERS.list_judgments(args)
 
       expect(result).toEqual(mockResponse.data)
@@ -107,7 +100,7 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: { content: 'Judgment content' } }
       mockedAxios.post.mockResolvedValueOnce(mockResponse)
 
-      const args: GetJudgmentArgs = { token: 'valid_token', jid: 'judgment_id' }
+      const args = { token: 'valid_token', jid: 'judgment_id' }
       const result = await TOOL_HANDLERS.get_judgment(args)
 
       expect(result).toEqual(mockResponse.data)
@@ -142,7 +135,7 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: [{ id: '1', name: 'Category 1' }] }
       mockedAxios.get.mockResolvedValueOnce(mockResponse)
 
-      const args: TokenArgs = { token: 'test-token' }
+      const args = { token: 'test-token' }
       const result = await TOOL_HANDLERS.list_categories(args)
 
       expect(result).toEqual(mockResponse.data)
@@ -171,7 +164,7 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: [{ id: '1', name: 'Resource 1' }] }
       mockedAxios.get.mockResolvedValueOnce(mockResponse)
 
-      const args: ListResourcesArgs = { categoryNo: 'CAT001', token: 'test-token' }
+      const args = { categoryNo: 'CAT001', token: 'test-token' }
       const result = await TOOL_HANDLERS.list_resources(args)
 
       expect(result).toEqual(mockResponse.data)
@@ -207,14 +200,15 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: fileData, headers: { 'content-type': 'application/octet-stream' } }
       mockedAxios.get.mockResolvedValueOnce(mockResponse)
 
-      const args: DownloadFileArgs = { fileSetId: 'FILE001', token: 'test-token' }
+      const args = { fileSetId: 'FILE001', token: 'test-token' }
       const result = await TOOL_HANDLERS.download_file(args)
 
-      const r = result as { content: Array<{ type: string; resource?: { blob: string; mimeType: string } }> }
+      const r = result as { content: Array<{ type: string; resource: { blob: string; mimeType: string } }> }
       expect(r.content).toHaveLength(1)
       expect(r.content[0].type).toBe('resource')
-      expect(r.content[0].resource?.blob).toBeDefined()
-      expect(r.content[0].resource?.mimeType).toBe('application/octet-stream')
+      expect(r.content[0].resource).toBeDefined()
+      expect(r.content[0].resource.blob).toBeDefined()
+      expect(r.content[0].resource.mimeType).toBe('application/octet-stream')
     })
 
     test('API 請求失敗時拋出錯誤', async () => {
@@ -238,7 +232,7 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: Buffer.from('file content'), headers: { 'content-type': 'application/json' } }
       mockedAxios.get.mockResolvedValueOnce(mockResponse)
 
-      const argsWithPaging: DownloadFileArgs = { fileSetId: 'FILE001', token: 'test-token', top: 10, skip: 0 }
+      const argsWithPaging = { fileSetId: 'FILE001', token: 'test-token', top: 10, skip: 0 }
       const result = await TOOL_HANDLERS.download_file(argsWithPaging)
 
       const r = result as { content: Array<{ type: string }> }

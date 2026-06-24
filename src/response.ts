@@ -2,9 +2,10 @@ type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'resource'; resource: { uri: string; mimeType: string; blob: string } }
 
-interface McpToolResult {
+export interface McpToolResult {
   content: ContentBlock[]
   isError?: boolean
+  [key: string]: unknown
 }
 
 export const createSuccessResponse = (data: unknown): McpToolResult => ({

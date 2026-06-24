@@ -33,7 +33,6 @@ function apiErrorMessage(error: unknown): string {
     if (e.response?.data?.message) return e.response.data.message
     if (e.message) return e.message
   }
-  if (error instanceof Error) return error.message
   return String(error)
 }
 

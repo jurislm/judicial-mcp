@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, test, expect, vi } from 'vitest'
 import { TOOLS_CONFIG, TOOL_HANDLERS } from '../src/tools.js'
 
 vi.mock('axios')
