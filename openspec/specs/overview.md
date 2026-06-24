@@ -9,10 +9,11 @@
 ## Architecture
 
 ```
-src/index.js          — MCP Server 主程式（啟動、工具路由、協議錯誤處理）
-src/tools.js          — TOOLS_CONFIG（工具定義）+ TOOL_HANDLERS（工具執行器）
-src/response.js       — MCP CallToolResult 格式化工具函式
-bin/judicial-mcp.js   — CLI 入口點（供 bunx / npx 呼叫）
+src/index.ts          — stdout 保護（console 覆寫），dynamic import 載入 server.ts
+src/server.ts         — MCP Server 主程式（工具路由、協議錯誤處理）
+src/tools.ts          — TOOLS_CONFIG（工具定義）+ TOOL_HANDLERS（工具執行器）
+src/response.ts       — MCP CallToolResult 格式化工具函式
+bin/judicial-mcp.ts   — CLI 入口點（#!/usr/bin/env bun，需 Bun 執行環境）
 ```
 
 進程環境變數：`JUDICIAL_USER`、`JUDICIAL_PASSWORD`（兩套 API 共用同一組帳密）。
@@ -30,13 +31,13 @@ bin/judicial-mcp.js   — CLI 入口點（供 bunx / npx 呼叫）
 
 | 工具名稱 | Domain | 所需前置 token | 程式碼位置 |
 |---------|--------|--------------|-----------|
-| `auth_token` | Authentication | 無 | `src/tools.js:184` |
-| `member_token` | Authentication | 無 | `src/tools.js:289` |
-| `list_judgments` | Judgments | `auth_token` | `src/tools.js:200` |
-| `get_judgment` | Judgments | `auth_token` | `src/tools.js:212` |
-| `list_categories` | Open Data | `member_token` | `src/tools.js:227` |
-| `list_resources` | Open Data | `member_token` | `src/tools.js:243` |
-| `download_file` | Open Data | `member_token` | `src/tools.js:260` |
+| `auth_token` | Authentication | 無 | `src/tools.ts:147` |
+| `member_token` | Authentication | 無 | `src/tools.ts:241` |
+| `list_judgments` | Judgments | `auth_token` | `src/tools.ts:163` |
+| `get_judgment` | Judgments | `auth_token` | `src/tools.ts:175` |
+| `list_categories` | Open Data | `member_token` | `src/tools.ts:190` |
+| `list_resources` | Open Data | `member_token` | `src/tools.ts:204` |
+| `download_file` | Open Data | `member_token` | `src/tools.ts:219` |
 
 ## Typical Call Flows
 
@@ -53,5 +54,6 @@ member_token → list_categories → list_resources(categoryNo) → download_fil
 ## Non-goals
 
 - 不提供 HTTP REST API；僅支援 stdio MCP transport。
+- 不支援 npx；`bin/judicial-mcp.ts` 使用 `#!/usr/bin/env bun` shebang，需 Bun 執行環境。
 - 不快取 token；每次工具呼叫由 client 自行傳入 token。
 - 不處理 token 過期重試邏輯；過期後需重新呼叫 `auth_token` / `member_token`。

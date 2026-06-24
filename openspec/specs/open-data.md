@@ -33,7 +33,7 @@ member_token
 
 ## Behavior
 
-### list_categories（`src/tools.js:227`）
+### list_categories（`src/tools.ts:190`）
 
 ```
 GIVEN client 持有有效的 member_token
@@ -49,7 +49,7 @@ THEN  拋出 Error: `取得主題分類清單失敗: ${error.response?.data?.mes
       由 createErrorResponse 包裝，isError: true
 ```
 
-### list_resources（`src/tools.js:243`）
+### list_resources（`src/tools.ts:204`）
 
 ```
 GIVEN client 持有有效的 member_token 與從 list_categories 取得的 categoryNo
@@ -60,19 +60,12 @@ THEN  validateInput.required(args, ['categoryNo', 'token'])
           header: Authorization: Bearer {token}
       回傳上游回應原始 data，由 createSuccessResponse 包裝
 
-GIVEN categoryNo 包含非數字字元
-WHEN  validateInput.numericString 執行
-THEN  拋出 Error: `categoryNo 必須是數字字串`
-      由 createErrorResponse 包裝，isError: true
-      注意：validateInput.numericString 已定義於 src/tools.js:40，
-            但 list_resources handler 目前未呼叫此驗證（src/tools.js:244-245）
-
 GIVEN 上游回傳非 2xx
-THEN  拋出 Error: `取得資料源清單失敗: ${error.response?.data?.message || error.message}`
+THEN  拋出 Error: `取得資料源清單失敗: ${apiErrorMessage(error)}`
       由 createErrorResponse 包裝，isError: true
 ```
 
-### download_file（`src/tools.js:260`）
+### download_file（`src/tools.ts:219`）
 
 ```
 GIVEN client 持有有效的 member_token 與從 list_resources 取得的 fileSetId
@@ -161,15 +154,9 @@ THEN  拋出 Error: `檔案下載失敗: ${error.response?.data?.message || erro
 其餘兩工具回傳 `content[type='text']`（JSON 字串）。
 詳細格式規範見 [mcp-protocol.md](./mcp-protocol.md)。
 
-## Known Gap
-
-`validateInput.numericString` 已定義於 `src/tools.js:40`，但 `list_resources` handler
-（`src/tools.js:244`）未呼叫此驗證。若 `categoryNo` 含非數字字元，不會在本 server 端攔截，
-直接傳至上游，由上游決定是否拒絕。
-
 ## Dependencies
 
-- `src/response.js` — `createSuccessResponse`、`createErrorResponse`、`createBlobResponse`（見 [mcp-protocol.md](./mcp-protocol.md)）
+- `src/response.ts` — `createSuccessResponse`、`createErrorResponse`、`createBlobResponse`（見 [mcp-protocol.md](./mcp-protocol.md)）
 - `member_token` 工具（見 [authentication.md](./authentication.md)）
 
 ## Non-goals

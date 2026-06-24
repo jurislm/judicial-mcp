@@ -86,3 +86,22 @@ Add `"typecheck": "tsc --noEmit"` to `package.json` scripts. `prepublishOnly` up
 
 - **`types/index.d.ts` auto-generation path** — `tsc --declaration` writes `.d.ts` next to source by default. The `declarationDir` must be configured to match `"types": "types/index.d.ts"` in `package.json`.  
   → Mitigation: verify generated file path matches `package.json` `"types"` field after first typecheck run.
+
+## Implementation Reconciliation (as shipped in `c6321d2`)
+
+The final implementation differs from this design in three minor points, recorded here so the
+archived design matches what was actually merged:
+
+- **D4 — shared `TokenArgs`.** `list_judgments` and `list_categories` share a single
+  `TokenArgs { token: string }` interface rather than a dedicated `ListJudgmentsArgs`. The
+  no-arg handlers (`auth_token` / `member_token`) take an unused `_args` parameter under the
+  shared `Record<string, unknown>` handler signature, not `Record<string, never>`. Exported
+  interfaces: `TokenArgs`, `GetJudgmentArgs`, `ListResourcesArgs`, `DownloadFileArgs`.
+- **D5 — object-first `apiErrorMessage`.** The shipped helper checks the
+  `response?.data?.message` / object branch *before* `instanceof Error` (object-first), to
+  preserve the upstream AxiosError body message. See `fix(tools): restore object-first
+  priority in apiErrorMessage to preserve response.data.message for AxiosError`.
+- **Bootstrap split + no `numericString`.** `src/index.ts` was split from `src/server.ts` so
+  the `console.*` → stderr override is guaranteed to run before any ESM module initializes
+  (`fix(index): split bootstrap to guarantee console override before ESM module init`). No
+  `numericString` validator was added — `validateInput` ships with only `required` and `token`.

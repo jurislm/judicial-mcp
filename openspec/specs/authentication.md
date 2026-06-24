@@ -30,7 +30,7 @@ process.env.JUDICIAL_PASSWORD  → auth_token 的 { password } / member_token �
 
 ## Behavior
 
-### auth_token（`src/tools.js:184`）
+### auth_token（`src/tools.ts:147`）
 
 ```
 GIVEN 環境變數 JUDICIAL_USER 與 JUDICIAL_PASSWORD 均已設定
@@ -49,7 +49,7 @@ THEN  拋出 Error: `授權失敗: ${error.response?.data?.message || error.mess
       由 createErrorResponse 包裝，isError: true
 ```
 
-### member_token（`src/tools.js:289`）
+### member_token（`src/tools.ts:241`）
 
 ```
 GIVEN 環境變數 JUDICIAL_USER 與 JUDICIAL_PASSWORD 均已設定
@@ -90,7 +90,7 @@ Output 為上游 JSON 原始回應，本 server 不做結構轉換。
 
 ## Dependencies
 
-- `src/response.js` — `createSuccessResponse`、`createErrorResponse`（見 [mcp-protocol.md](./mcp-protocol.md)）
+- `src/response.ts` — `createSuccessResponse`、`createErrorResponse`（見 [mcp-protocol.md](./mcp-protocol.md)）
 - `process.env.JUDICIAL_USER`、`process.env.JUDICIAL_PASSWORD`
 
 ## Non-goals
