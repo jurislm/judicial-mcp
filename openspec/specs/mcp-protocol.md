@@ -41,19 +41,21 @@ THEN  回傳 { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] 
 ```
 GIVEN Error 物件或任意物件 error，以及描述字串 message
 WHEN  呼叫 createErrorResponse(error, message)
-THEN  detail = error?.response?.data ?? error?.message ?? String(error)
+THEN  若 error 為含 'response' 鍵的物件 → detail = error.response?.data  // axios body，可為 undefined
+      若 error instanceof Error         → detail = error.message
+      否則                               → detail = String(error)
       回傳 {
         content: [{ type: 'text', text: JSON.stringify({ error: message, detail }, null, 2) }],
         isError: true
       }
 ```
 
-detail 提取優先順序：
-1. `error.response.data`（axios HTTP 錯誤，含上游回應 body）
-2. `error.message`（標準 Error 物件）
-3. `String(error)`（fallback）
+detail 提取（三個分支**互斥**，非 ?? 鏈）：
+1. `error.response.data`：error 為含 `response` 鍵的物件（axios 錯誤）；data 可為 `undefined`，不回落至 error.message
+2. `error.message`：error instanceof Error（且無 `response` 鍵）
+3. `String(error)`：其他所有情況
 
-使用場景：`src/server.ts:48`，所有工具 handler 拋出例外時統一處理。
+使用場景：`src/server.ts:50`，所有工具 handler 拋出例外時統一處理。
 
 ### createBlobResponse（`src/response.ts:38`）
 
@@ -74,7 +76,8 @@ THEN  回傳 {
 ```
 
 使用場景：僅用於 `download_file` handler（`src/tools.ts:235`），
-傳入參數為 `(Buffer.from(result.data), mimeType, 'data:{mimeType};base64')`。
+傳入參數為 `(Buffer.from(result.data as ArrayBuffer), mimeType, uri)`，
+其中 `uri` 為 runtime template literal，格式為 `data:<mimeType>;base64`（例：`data:application/zip;base64`）。
 
 ## Routing Logic（`src/server.ts:27`）
 

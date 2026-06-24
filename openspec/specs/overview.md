@@ -9,11 +9,12 @@
 ## Architecture
 
 ```
-src/index.ts          — stdout 保護（console 覆寫），dynamic import 載入 server.ts
+src/index.ts          — stdout 保護（console 覆寫），dynamic import('./server.js') 載入 server
 src/server.ts         — MCP Server 主程式（工具路由、協議錯誤處理）
 src/tools.ts          — TOOLS_CONFIG（工具定義）+ TOOL_HANDLERS（工具執行器）
 src/response.ts       — MCP CallToolResult 格式化工具函式
 bin/judicial-mcp.ts   — CLI 入口點（#!/usr/bin/env bun，需 Bun 執行環境）
+types/                — 自動產生的 .d.ts（tsc --emitDeclarationOnly，gitignored）
 ```
 
 進程環境變數：`JUDICIAL_USER`、`JUDICIAL_PASSWORD`（兩套 API 共用同一組帳密）。

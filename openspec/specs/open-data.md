@@ -78,7 +78,7 @@ THEN  validateInput.required(args, ['fileSetId', 'token'])
           header: Authorization: Bearer {token}
           responseType: 'arraybuffer'
       從 response header 讀取 content-type（缺省為 'application/octet-stream'）
-      呼叫 createBlobResponse(Buffer.from(result.data), mimeType, `data:{mimeType};base64`)
+      呼叫 createBlobResponse(Buffer.from(result.data as ArrayBuffer), mimeType, `data:${mimeType};base64`)
       回傳 MCP resource content type（非 text type）
 
 GIVEN top 或 skip 未提供
@@ -143,9 +143,9 @@ THEN  拋出 Error: `檔案下載失敗: ${error.response?.data?.message || erro
   "content": [{
     "type": "resource",
     "resource": {
-      "uri": "data:{mimeType};base64",
-      "mimeType": "{from response header}",
-      "blob": "{base64-encoded string}"
+      "uri": "data:<mimeType>;base64",
+      "mimeType": "<from response content-type header>",
+      "blob": "<base64-encoded string>"
     }
   }]
 }
