@@ -62,7 +62,11 @@ describe('src/index.js', () => {
 
   test('console.log/info/warn 重定向到 stderr', () => {
     console.log('hello');
-    expect(stderrSpy).toHaveBeenCalledWith('hello\n');
+    console.info('world');
+    console.warn('!');
+    expect(stderrSpy).toHaveBeenNthCalledWith(1, 'hello\n');
+    expect(stderrSpy).toHaveBeenNthCalledWith(2, 'world\n');
+    expect(stderrSpy).toHaveBeenNthCalledWith(3, '!\n');
   });
 
   test('ListTools handler 回傳工具清單', async () => {

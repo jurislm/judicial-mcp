@@ -51,7 +51,7 @@ MCP 使用 stdio transport，**stdout 只能輸出 JSON-RPC 訊息**。`index.js
 
 ## 測試架構
 
-測試全部位於 `__tests__/`（`mcp.test.js` / `response.test.js` / `tools.test.js`），使用 Jest + `jest.mock('axios')`。所有 HTTP 呼叫都被 mock，測試不需要實際網路連線或有效帳密。
+測試全部位於 `__tests__/`（`index.test.js` / `mcp.test.js` / `response.test.js` / `tools.test.js`），使用 Jest + `jest.mock('axios')`。所有 HTTP 呼叫都被 mock，測試不需要實際網路連線或有效帳密。
 
 環境變數在 `beforeEach` 設置、`afterEach` 清除。
 
