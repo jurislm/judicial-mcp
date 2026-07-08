@@ -3,7 +3,7 @@
  * @description MCP 回應格式測試 — 驗證符合 MCP 規範
  */
 
-const { createSuccessResponse, createErrorResponse } = require('../src/response');
+const { createSuccessResponse, createErrorResponse, createBlobResponse } = require('../src/response');
 
 describe('MCP 回應格式', () => {
   describe('createSuccessResponse', () => {
@@ -68,6 +68,29 @@ describe('MCP 回應格式', () => {
       const result = createErrorResponse(error, '認證失敗');
 
       expect(result.content[0].text).toContain('Unauthorized');
+    });
+
+    test('無 response.data 且無 message 時，退回 String(error)', () => {
+      const error = 'plain string failure';
+      const result = createErrorResponse(error, '未知錯誤');
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.detail).toBe('plain string failure');
+    });
+  });
+
+  describe('createBlobResponse', () => {
+    test('Buffer 輸入編碼為 base64', () => {
+      const result = createBlobResponse(Buffer.from('hello'), 'text/plain', 'data:text/plain;base64');
+
+      expect(result.content[0].type).toBe('resource');
+      expect(result.content[0].resource.blob).toBe(Buffer.from('hello').toString('base64'));
+    });
+
+    test('非 Buffer 輸入原樣傳遞', () => {
+      const result = createBlobResponse('already-encoded-string', 'application/octet-stream', 'data:application/octet-stream;base64');
+
+      expect(result.content[0].resource.blob).toBe('already-encoded-string');
     });
   });
 

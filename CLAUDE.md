@@ -51,9 +51,13 @@ MCP 使用 stdio transport，**stdout 只能輸出 JSON-RPC 訊息**。`index.js
 
 ## 測試架構
 
-測試全部位於 `__tests__/`，使用 Jest + `jest.mock('axios')`。所有 HTTP 呼叫都被 mock，測試不需要實際網路連線或有效帳密。
+測試全部位於 `__tests__/`（`mcp.test.js` / `response.test.js` / `tools.test.js`），使用 Jest + `jest.mock('axios')`。所有 HTTP 呼叫都被 mock，測試不需要實際網路連線或有效帳密。
 
 環境變數在 `beforeEach` 設置、`afterEach` 清除。
+
+## 發布
+
+`bin/judicial-mcp.js` 是 npm 全域安裝後的可執行檔入口（`require('../src/index.js')`），對應 `package.json` 的 `bin.judicial-mcp`。發布前 `prepublishOnly` 會自動跑 `bun run test && bun run lint`。套件為 `@jurislm/judicial-mcp`，透過 `bunx @jurislm/judicial-mcp@latest` 或 jurislm-tools plugin（`jt:judicial`）使用。
 
 ## 環境變數
 

@@ -30,17 +30,6 @@ const validateInput = {
     if (!token || typeof token !== 'string' || token.trim().length === 0) {
       throw new Error('無效的授權 Token');
     }
-  },
-
-  /**
-   * 驗證數字字串格式
-   * @param {string} value - 要驗證的值
-   * @param {string} fieldName - 欄位名稱
-   */
-  numericString(value, fieldName) {
-    if (value && !/^\d+$/.test(value)) {
-      throw new Error(`${fieldName} 必須是數字字串`);
-    }
   }
 };
 

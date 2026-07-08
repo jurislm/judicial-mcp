@@ -262,6 +262,16 @@ describe('Tools 模組測試', () => {
 
       expect(result.content[0].type).toBe('resource');
     });
+
+    test('缺少 content-type 標頭時，退回 application/octet-stream', async () => {
+      const fileData = Buffer.from('file content');
+      const mockResponse = { data: fileData, headers: {} };
+      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+
+      const result = await TOOL_HANDLERS.download_file({ fileSetId: 'FILE001', token: 'test-token' });
+
+      expect(result.content[0].resource.mimeType).toBe('application/octet-stream');
+    });
   });
 
   describe('TOOL_HANDLERS.member_token', () => {

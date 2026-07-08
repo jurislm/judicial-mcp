@@ -63,9 +63,9 @@ export JUDICIAL_PASSWORD=your_password
 ## Development
 
 ```bash
-npm install
-npm test           # Run tests
-npm run lint       # oxlint
+bun install
+bun run test       # Run tests (Jest — do not use `bun test` directly)
+bun run lint       # eslint --max-warnings=0
 ```
 
 ## License
