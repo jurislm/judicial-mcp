@@ -32,13 +32,13 @@ types/                — 自動產生的 .d.ts（tsc --emitDeclarationOnly，gi
 
 | 工具名稱 | Domain | 所需前置 token | 程式碼位置 |
 |---------|--------|--------------|-----------|
-| `auth_token` | Authentication | 無 | `src/tools.ts:147` |
-| `member_token` | Authentication | 無 | `src/tools.ts:241` |
-| `list_judgments` | Judgments | `auth_token` | `src/tools.ts:163` |
-| `get_judgment` | Judgments | `auth_token` | `src/tools.ts:175` |
-| `list_categories` | Open Data | `member_token` | `src/tools.ts:190` |
-| `list_resources` | Open Data | `member_token` | `src/tools.ts:204` |
-| `download_file` | Open Data | `member_token` | `src/tools.ts:219` |
+| `auth_token` | Authentication | 無 | `src/tools.ts:153` |
+| `member_token` | Authentication | 無 | `src/tools.ts:248` |
+| `list_judgments` | Judgments | `auth_token` | `src/tools.ts:169` |
+| `get_judgment` | Judgments | `auth_token` | `src/tools.ts:181` |
+| `list_categories` | Open Data | `member_token` | `src/tools.ts:196` |
+| `list_resources` | Open Data | `member_token` | `src/tools.ts:210` |
+| `download_file` | Open Data | `member_token` | `src/tools.ts:226` |
 
 ## Typical Call Flows
 

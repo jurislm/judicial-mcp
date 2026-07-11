@@ -75,7 +75,7 @@ THEN  回傳 {
       isError 欄位省略（成功）
 ```
 
-使用場景：僅用於 `download_file` handler（`src/tools.ts:235`），
+使用場景：僅用於 `download_file` handler（`src/tools.ts:242`），
 傳入參數為 `(Buffer.from(result.data as ArrayBuffer), mimeType, uri)`，
 其中 `uri` 為 runtime template literal，格式為 `data:<mimeType>;base64`（例：`data:application/zip;base64`）。
 

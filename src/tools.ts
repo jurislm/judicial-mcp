@@ -23,6 +23,12 @@ const validateInput = {
       throw new Error('無效的授權 Token')
     }
   },
+
+  numericString(value: unknown, fieldName: string): void {
+    if (value && (typeof value !== 'string' || !/^\d+$/.test(value))) {
+      throw new Error(`${fieldName} 必須是數字字串`)
+    }
+  },
 }
 
 // ─── Error helper ────────────────────────────────────────────────────────────
@@ -103,7 +109,8 @@ export const TOOLS_CONFIG = {
       properties: {
         categoryNo: {
           type: 'string',
-          description: '從 list_categories 工具取得的分類編號',
+          pattern: '^\\d+$',
+          description: '從 list_categories 工具取得的分類編號（純數字字串）',
         },
         token: { type: 'string', description: '從 member_token 工具取得的會員授權 Token' },
       },
@@ -204,6 +211,7 @@ export const TOOL_HANDLERS: Record<string, (_args: Record<string, unknown>) => P
     const typed = args as unknown as ListResourcesArgs
     validateInput.required(args, ['categoryNo', 'token'])
     validateInput.token(typed.token)
+    validateInput.numericString(typed.categoryNo, 'categoryNo')
     try {
       const url = `${OPENDATA_API_BASE}/data/api/rest/categories/${typed.categoryNo}/resources`
       const result = await axios.get(url, {

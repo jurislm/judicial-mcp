@@ -33,7 +33,7 @@ member_token
 
 ## Behavior
 
-### list_categories（`src/tools.ts:190`）
+### list_categories（`src/tools.ts:196`）
 
 ```
 GIVEN client 持有有效的 member_token
@@ -49,23 +49,30 @@ THEN  拋出 Error: `取得主題分類清單失敗: ${error.response?.data?.mes
       由 createErrorResponse 包裝，isError: true
 ```
 
-### list_resources（`src/tools.ts:204`）
+### list_resources（`src/tools.ts:210`）
 
 ```
 GIVEN client 持有有效的 member_token 與從 list_categories 取得的 categoryNo
 WHEN  client 呼叫 list_resources，傳入 { categoryNo, token }
 THEN  validateInput.required(args, ['categoryNo', 'token'])
       validateInput.token(args.token)
+      validateInput.numericString(args.categoryNo, 'categoryNo')
       GET https://opendata.judicial.gov.tw/data/api/rest/categories/{categoryNo}/resources
           header: Authorization: Bearer {token}
       回傳上游回應原始 data，由 createSuccessResponse 包裝
+
+GIVEN categoryNo 包含非數字字元
+WHEN  validateInput.numericString 執行
+THEN  拋出 Error: `categoryNo 必須是數字字串`
+      由 createErrorResponse 包裝，isError: true
+      不會送出上游請求（在 GET 呼叫前即被攔截）
 
 GIVEN 上游回傳非 2xx
 THEN  拋出 Error: `取得資料源清單失敗: ${apiErrorMessage(error)}`
       由 createErrorResponse 包裝，isError: true
 ```
 
-### download_file（`src/tools.ts:219`）
+### download_file（`src/tools.ts:226`）
 
 ```
 GIVEN client 持有有效的 member_token 與從 list_resources 取得的 fileSetId
@@ -110,7 +117,7 @@ THEN  拋出 Error: `檔案下載失敗: ${apiErrorMessage(error)}`
 {
   "type": "object",
   "properties": {
-    "categoryNo": { "type": "string", "description": "從 list_categories 工具取得的分類編號" },
+    "categoryNo": { "type": "string", "pattern": "^\\d+$", "description": "從 list_categories 工具取得的分類編號（純數字字串）" },
     "token":      { "type": "string", "description": "從 member_token 工具取得的會員授權 Token" }
   },
   "required": ["categoryNo", "token"],
