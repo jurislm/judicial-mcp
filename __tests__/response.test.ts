@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { createSuccessResponse, createErrorResponse } from '../src/response.js'
+import { createSuccessResponse, createErrorResponse, createBlobResponse } from '../src/response.js'
 
 describe('MCP 回應格式', () => {
   describe('createSuccessResponse', () => {
@@ -66,6 +66,31 @@ describe('MCP 回應格式', () => {
 
       const block = result.content[0] as { type: 'text'; text: string }
       expect(block.text).toContain('Unauthorized')
+    })
+
+    test('非 Error、無 response 的值退回 String(error)', () => {
+      const result = createErrorResponse('plain string error', '未知錯誤')
+
+      const block = result.content[0] as { type: 'text'; text: string }
+      expect(block.text).toContain('plain string error')
+    })
+  })
+
+  describe('createBlobResponse', () => {
+    test('Buffer 資料被編碼為 base64', () => {
+      const result = createBlobResponse(Buffer.from('hello'), 'application/pdf', 'data:application/pdf;base64')
+      const block = result.content[0] as { type: 'resource'; resource: { blob: string; mimeType: string } }
+
+      expect(block.type).toBe('resource')
+      expect(block.resource.mimeType).toBe('application/pdf')
+      expect(block.resource.blob).toBe(Buffer.from('hello').toString('base64'))
+    })
+
+    test('字串資料直接作為 blob 傳遞（非 Buffer 分支）', () => {
+      const result = createBlobResponse('already-base64==', 'application/octet-stream', 'data:application/octet-stream;base64')
+      const block = result.content[0] as { type: 'resource'; resource: { blob: string } }
+
+      expect(block.resource.blob).toBe('already-base64==')
     })
   })
 

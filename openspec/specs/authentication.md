@@ -30,7 +30,7 @@ process.env.JUDICIAL_PASSWORD  → auth_token 的 { password } / member_token �
 
 ## Behavior
 
-### auth_token（`src/tools.ts:147`）
+### auth_token（`src/tools.ts:153`）
 
 ```
 GIVEN 環境變數 JUDICIAL_USER 與 JUDICIAL_PASSWORD 均已設定
@@ -49,7 +49,7 @@ THEN  拋出 Error: `授權失敗: ${error.response?.data?.message || error.mess
       由 createErrorResponse 包裝，isError: true
 ```
 
-### member_token（`src/tools.ts:241`）
+### member_token（`src/tools.ts:248`）
 
 ```
 GIVEN 環境變數 JUDICIAL_USER 與 JUDICIAL_PASSWORD 均已設定

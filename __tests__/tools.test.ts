@@ -164,7 +164,7 @@ describe('Tools 模組測試', () => {
       const mockResponse = { data: [{ id: '1', name: 'Resource 1' }] }
       mockedAxios.get.mockResolvedValueOnce(mockResponse)
 
-      const args = { categoryNo: 'CAT001', token: 'test-token' }
+      const args = { categoryNo: '1001', token: 'test-token' }
       const result = await TOOL_HANDLERS.list_resources(args)
 
       expect(result).toEqual(mockResponse.data)
@@ -176,12 +176,28 @@ describe('Tools 模組測試', () => {
       )
     })
 
+    test('categoryNo 含非數字字元時拋出錯誤（不送出上游請求）', async () => {
+      await expect(
+        TOOL_HANDLERS.list_resources({ categoryNo: 'CAT001', token: 'test-token' }),
+      ).rejects.toThrow('categoryNo 必須是數字字串')
+
+      expect(mockedAxios.get).not.toHaveBeenCalled()
+    })
+
+    test('categoryNo 為非字串型別（如 JSON number）時拒絕，不因 RegExp 隱式轉型而通過', async () => {
+      await expect(
+        TOOL_HANDLERS.list_resources({ categoryNo: 1001, token: 'test-token' }),
+      ).rejects.toThrow('categoryNo 必須是數字字串')
+
+      expect(mockedAxios.get).not.toHaveBeenCalled()
+    })
+
     test('API 請求失敗時拋出錯誤', async () => {
       const mockError = { response: { data: { message: 'Category not found' } } }
       mockedAxios.get.mockRejectedValueOnce(mockError)
 
       await expect(
-        TOOL_HANDLERS.list_resources({ categoryNo: 'INVALID', token: 'test-token' }),
+        TOOL_HANDLERS.list_resources({ categoryNo: '9999', token: 'test-token' }),
       ).rejects.toThrow('取得資料源清單失敗: Category not found')
     })
 
@@ -189,8 +205,16 @@ describe('Tools 模組測試', () => {
       mockedAxios.get.mockRejectedValueOnce(new Error('Network Error'))
 
       await expect(
-        TOOL_HANDLERS.list_resources({ categoryNo: 'CAT001', token: 'test-token' }),
+        TOOL_HANDLERS.list_resources({ categoryNo: '1001', token: 'test-token' }),
       ).rejects.toThrow('取得資料源清單失敗: Network Error')
+    })
+
+    test('上游拋出非 Error 且無 response 時，退回 String(error)', async () => {
+      mockedAxios.get.mockRejectedValueOnce('plain string failure')
+
+      await expect(
+        TOOL_HANDLERS.list_resources({ categoryNo: '1001', token: 'test-token' }),
+      ).rejects.toThrow('取得資料源清單失敗: plain string failure')
     })
   })
 
@@ -237,6 +261,16 @@ describe('Tools 模組測試', () => {
 
       const r = result as { content: Array<{ type: string }> }
       expect(r.content[0].type).toBe('resource')
+    })
+
+    test('回應缺少 content-type header 時退回 application/octet-stream', async () => {
+      const mockResponse = { data: Buffer.from('file content'), headers: {} }
+      mockedAxios.get.mockResolvedValueOnce(mockResponse)
+
+      const result = await TOOL_HANDLERS.download_file({ fileSetId: 'FILE001', token: 'test-token' })
+
+      const r = result as { content: Array<{ resource: { mimeType: string } }> }
+      expect(r.content[0].resource.mimeType).toBe('application/octet-stream')
     })
   })
 
