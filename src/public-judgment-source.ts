@@ -6,6 +6,7 @@ const BASE_URL = 'https://judgment.judicial.gov.tw/FJUD/'
 const SEARCH_URL = new URL('Default_AD.aspx', BASE_URL)
 const DETAIL_URL = new URL('data.aspx', BASE_URL)
 const PAGE_SIZE = 10
+const SOURCE_PAGE_SIZE = 20
 const MAX_PAGE = 50
 const MAX_TEXT_LENGTH = 40_000
 const MAX_SUMMARY_LENGTH = 500
@@ -19,6 +20,7 @@ interface SearchCriteria {
   caseNumber?: string
   limit: number
   page: number
+  offset: number
 }
 
 interface CaseNumberParts {
@@ -74,6 +76,7 @@ function parseCriteria(args: Record<string, unknown>): SearchCriteria {
   const caseNumber = optionalString(args, 'caseNumber', 80)
   const limit = optionalInteger(args, 'limit', 1, PAGE_SIZE, 5)
   const page = optionalInteger(args, 'page', 1, MAX_PAGE, 1)
+  const offset = optionalInteger(args, 'offset', 0, SOURCE_PAGE_SIZE - 1, 0)
   if (!keyword && !court && !caseNumber && year === 0) {
     throw new Error('至少需要提供 keyword、court、year 或 caseNumber 其中一項')
   }
@@ -84,6 +87,7 @@ function parseCriteria(args: Record<string, unknown>): SearchCriteria {
     ...(caseNumber ? { caseNumber } : {}),
     limit,
     page,
+    offset,
   }
 }
 
@@ -229,7 +233,7 @@ function caseIdFromLink(href: string, base: URL): string | undefined {
   const url = allowedOfficialUrl(href, base)
   if (!url.pathname.endsWith('/data.aspx') || url.searchParams.get('ty') !== 'JD') return undefined
   const caseId = url.searchParams.get('id')
-  if (!caseId || !/^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8},\d+$/.test(caseId)) return undefined
+  if (!caseId || !/^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8}(?:,\d+)?$/.test(caseId)) return undefined
   return caseId
 }
 
@@ -299,7 +303,7 @@ function makeSearchResultUrl(iframeSource: string, page: number): URL {
 }
 
 function validCaseId(value: string): boolean {
-  return /^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8},\d+$/.test(value)
+  return /^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8}(?:,\d+)?$/.test(value)
 }
 
 function judgmentUrl(caseId: string): URL {
@@ -348,6 +352,8 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
         cache: { status: 'not_cached' },
         truncated: false,
         partial: false,
+        next_page: null,
+        next_offset: null,
         source_version: null,
       }
     }
@@ -364,11 +370,14 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
   const allResults = parseResults(resultsHtml, resultUrl, retrievedAt)
   const sourceHasNextPage = hasNextPage(resultsHtml, criteria.page)
   const pageHasNext = sourceHasNextPage && criteria.page < MAX_PAGE
-  const pageResults = allResults.slice(0, criteria.limit)
-  const truncated = allResults.length > criteria.limit || sourceHasNextPage || pageResults.some(result => result.truncated)
+  const pageResults = allResults.slice(criteria.offset, criteria.offset + criteria.limit)
+  const hasMoreOnPage = allResults.length > criteria.offset + criteria.limit
+  const truncated = hasMoreOnPage || sourceHasNextPage || pageResults.some(result => result.truncated)
   const ambiguous = Boolean(
-    criteria.caseNumber && (allResults.length > 1 || criteria.page > 1 || sourceHasNextPage),
+    criteria.caseNumber && (allResults.length > 1 || criteria.page > 1 || criteria.offset > 0 || sourceHasNextPage),
   )
+  const hasMoreResults = hasMoreOnPage || sourceHasNextPage
+  const hasNextPageResult = hasMoreOnPage || pageHasNext
   return {
     count: pageResults.length,
     ambiguous,
@@ -377,8 +386,9 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
     retrieved_at: retrievedAt,
     cache: { status: 'not_cached' },
     truncated,
-    partial: sourceHasNextPage && !pageHasNext,
-    next_page: pageHasNext ? criteria.page + 1 : null,
+    partial: hasMoreResults && !hasNextPageResult,
+    next_page: hasMoreOnPage ? criteria.page : pageHasNext ? criteria.page + 1 : null,
+    next_offset: hasMoreOnPage ? criteria.offset + criteria.limit : pageHasNext ? 0 : null,
     source_version: null,
   }
 }

@@ -70,6 +70,7 @@ describe('judgment search and text tools', () => {
       caseNumber: expect.objectContaining({ type: 'string' }),
       limit: expect.objectContaining({ type: 'integer' }),
       page: expect.objectContaining({ type: 'integer' }),
+      offset: expect.objectContaining({ type: 'integer' }),
     })
     expect(TOOLS_CONFIG.search_judgments.inputSchema).not.toHaveProperty('required')
     expect(TOOLS_CONFIG.search_judgments.inputSchema.properties).not.toHaveProperty('token')
@@ -132,6 +133,60 @@ describe('judgment search and text tools', () => {
         cache: { status: 'not_cached' },
       }],
     })
+  })
+
+  test('returns every result in an upstream page through page and offset pagination', async () => {
+    const rows = Array.from({ length: 20 }, (_, index) => {
+      const number = index + 1
+      return `<tr><td>${number}</td><td><a href="data.aspx?ty=JD&amp;id=TPDV%2c113%2c訴%2c${number}%2c20240401%2c1">113年度訴字第${number}號</a></td><td>113/04/01</td><td>案由${number}</td></tr><tr class="summary"><td colspan="4"><span class="tdCut">摘要${number}</span></td></tr>`
+    }).join('')
+    const page = `<table id="jud"><tr><th>裁判字號</th><th>日期</th><th>案由</th></tr>${rows}</table><a href="qryresultlst.aspx?page=2">下一頁</a>`
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: page, headers: {} })
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: page, headers: {} })
+    mockedAxios.post
+      .mockResolvedValueOnce({ data: '<iframe src="qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>', headers: {} })
+      .mockResolvedValueOnce({ data: '<iframe src="qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>', headers: {} })
+
+    const firstPage = toolData(await dispatchTool('search_judgments', { keyword: '資料保護', limit: 10 }))
+    const secondPage = toolData(await dispatchTool('search_judgments', { keyword: '資料保護', limit: 10, page: 1, offset: 10 }))
+
+    expect(firstPage).toMatchObject({ count: 10, truncated: true, next_page: 1, next_offset: 10 })
+    expect(secondPage).toMatchObject({ count: 10, truncated: true, next_page: 2, next_offset: 0 })
+    const firstResults = firstPage.results
+    const secondResults = secondPage.results
+    if (!Array.isArray(firstResults) || !Array.isArray(secondResults)) throw new Error('Expected judgment results')
+    expect(firstResults.map(result => isRecord(result) ? result.case_id : undefined)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `TPDV,113,訴,${index + 1},20240401,1`),
+    )
+    expect(secondResults.map(result => isRecord(result) ? result.case_id : undefined)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `TPDV,113,訴,${index + 11},20240401,1`),
+    )
+  })
+
+  test('accepts five-part legacy judgment IDs from search results and full-text retrieval', async () => {
+    const legacyPage = resultPage.replace(
+      'TPDV%2c113%2c訴%2c1234%2c20240401%2c1',
+      'TPSV%2c88%2c台上%2c1864%2c19990820',
+    ).replace('113年度訴字第1234號', '88年度台上字第1864號')
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: legacyPage, headers: {} })
+      .mockResolvedValueOnce({ data: '<div id="jud">最高法院判決全文</div>', headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>',
+      headers: {},
+    })
+
+    const search = toolData(await dispatchTool('search_judgments', { caseNumber: '1864' }))
+    const results = search.results
+    if (!Array.isArray(results) || !isRecord(results[0])) throw new Error('Expected legacy judgment result')
+    expect(results[0].case_id).toBe('TPSV,88,台上,1864,19990820')
+
+    const text = toolData(await dispatchTool('fetch_judgment_text', { caseId: 'TPSV,88,台上,1864,19990820' }))
+    expect(text).toMatchObject({ case_id: 'TPSV,88,台上,1864,19990820', full_text: '最高法院判決全文' })
   })
 
   test('returns multiple exact-number matches as ambiguous instead of selecting one', async () => {
