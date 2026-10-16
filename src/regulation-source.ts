@@ -264,6 +264,12 @@ function articleBlockText(block: ArticleBlock, articleNumber: string): string | 
   return normalizeArticleHtml(html)
 }
 
+function isArticleBlock(block: ArticleBlock): boolean {
+  const heading = block.find('.col-no, .law-reg-no, .article-number').first().text().trim()
+  const content = block.find('.col-data, .law-reg-content-text, .article-content').first()
+  return /^第\s*\d+(?:-\d+)?\s*條/.test(heading) && content.length > 0 && content.html() !== null
+}
+
 function parseArticle(html: string, url: URL, lawName: string, articleNumber: string): ParsedArticle {
   const $ = load(html)
   const pageText = normalizeArticleText($('main, #content, #law_content').first().text() || $('body').text())
@@ -272,15 +278,15 @@ function parseArticle(html: string, url: URL, lawName: string, articleNumber: st
   }
   let articleText: string | undefined
   const blocks = $('.law-reg-content, .law-article, .article-content-row, [id^="law-reg-content"]').toArray()
+  if (blocks.length === 0 || blocks.some(block => !isArticleBlock($(block)))) {
+    throw new RegulationSourceError('source_changed', url.href)
+  }
   for (const block of blocks) {
     articleText = articleBlockText($(block), articleNumber)
     if (articleText) break
   }
   if (!articleText) {
-    if (/查無|無此條文|無此法規/.test(pageText)) {
-      throw new RegulationSourceError('regulation_article_not_found', url.href)
-    }
-    throw new RegulationSourceError('source_changed', url.href)
+    throw new RegulationSourceError('regulation_article_not_found', url.href)
   }
   const metadataText = regulationMetadataText(pageText)
   const version: RegulationVersion = {

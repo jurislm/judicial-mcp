@@ -290,8 +290,21 @@ describe('query_regulation', () => {
     })
   })
 
-  test('reports a confirmed missing article separately from an unrecognized page', async () => {
+  test('reports a missing article only after recognizing official article rows', async () => {
     queueLawResponse(lawSearch, '<main id="content"><h1>民法</h1><p>無此條文</p></main>')
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '99999' })).rejects.toMatchObject({
+      code: 'source_changed',
+    })
+
+    const recognizedPage = `
+      <main id="content"><h1>民法</h1>
+        <div class="law-reg-content">
+          <div class="col-no">第 1 條</div>
+          <div class="col-data">民事，法律所未規定者，依習慣。</div>
+        </div>
+      </main>
+    `
+    queueLawResponse(lawSearch, recognizedPage)
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '99999' })).rejects.toMatchObject({
       code: 'regulation_article_not_found',
     })
