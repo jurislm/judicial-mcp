@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { createBlobResponse } from './response.js'
+import { fetchJudgmentText, searchJudgments } from './public-judgment-source.js'
 
 // ─── Arg interfaces ──────────────────────────────────────────────────────────
 
@@ -138,6 +139,36 @@ export const TOOLS_CONFIG = {
       additionalProperties: false,
     },
   },
+
+  search_judgments: {
+    name: 'search_judgments',
+    description: '透過司法院公開裁判書查詢頁搜尋裁判，不需要授權 Token。year 可使用西元或民國年；完整案號可同時指定案類。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: '裁判全文關鍵字，最多 128 字元' },
+        court: { type: 'string', description: '司法院法院名稱或官方法院代碼' },
+        year: { type: 'integer', description: '裁判年度，可使用西元或民國年', minimum: 1, maximum: 9999 },
+        caseNumber: { type: 'string', description: '案號數字，或「年度案類字第號」格式' },
+        limit: { type: 'integer', description: '每頁最多回傳筆數，預設 5，上限 10', minimum: 1, maximum: 10 },
+        page: { type: 'integer', description: '官方結果頁頁碼，預設 1，上限 50', minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+  },
+
+  fetch_judgment_text: {
+    name: 'fetch_judgment_text',
+    description: '依 search_judgments 回傳的 case_id 取得司法院公開裁判全文，不需要授權 Token。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        caseId: { type: 'string', description: 'search_judgments 回傳的 case_id' },
+      },
+      required: ['caseId'],
+      additionalProperties: false,
+    },
+  },
 } as const
 
 // ─── Tool handlers ───────────────────────────────────────────────────────────
@@ -254,5 +285,13 @@ export const TOOL_HANDLERS: Record<string, (_args: Record<string, unknown>) => P
     } catch (error: unknown) {
       throw new Error(`會員授權失敗: ${apiErrorMessage(error)}`)
     }
+  },
+
+  async search_judgments(args) {
+    return searchJudgments(args)
+  },
+
+  async fetch_judgment_text(args) {
+    return fetchJudgmentText(args)
   },
 }
