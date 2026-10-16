@@ -17,6 +17,7 @@ export interface SearchJudgmentsArgs extends Record<string, unknown> {
   caseNumber?: string
   limit?: number
   page?: number
+  offset?: number
 }
 export interface FetchJudgmentTextArgs extends Record<string, unknown> { caseId: string }
 export interface QueryRegulationArgs extends Record<string, unknown> {
@@ -71,12 +72,14 @@ function searchJudgmentsArgs(params: Record<string, unknown>): SearchJudgmentsAr
   const caseNumber = optionalStringArgument(params, 'caseNumber')
   const limit = optionalNumberArgument(params, 'limit')
   const page = optionalNumberArgument(params, 'page')
+  const offset = optionalNumberArgument(params, 'offset')
   if (keyword !== undefined) args.keyword = keyword
   if (court !== undefined) args.court = court
   if (year !== undefined) args.year = year
   if (caseNumber !== undefined) args.caseNumber = caseNumber
   if (limit !== undefined) args.limit = limit
   if (page !== undefined) args.page = page
+  if (offset !== undefined) args.offset = offset
   return args
 }
 
@@ -226,6 +229,7 @@ export const TOOLS_CONFIG = {
         caseNumber: { type: 'string', description: '案號數字，或「年度案類字第號」格式' },
         limit: { type: 'integer', description: '每頁最多回傳筆數，預設 5，上限 10', minimum: 1, maximum: 10 },
         page: { type: 'integer', description: '官方結果頁頁碼，預設 1，上限 50', minimum: 1, maximum: 50 },
+        offset: { type: 'integer', description: '官方結果頁內的起始位置，預設 0，範圍 0–19；依回傳的 next_page 與 next_offset 繼續查詢', minimum: 0, maximum: 19 },
       },
       additionalProperties: false,
     },

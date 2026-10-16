@@ -16,8 +16,9 @@ Search accepts any combination of these filters (at least one is required):
 | `caseNumber` | Case number, either digits or a full form such as `113年度訴字第1234號` |
 | `limit` | Results per page, 1–10; defaults to 5 |
 | `page` | Official result page, 1–50; defaults to 1 |
+| `offset` | Starting row within an official result page, 0–19; defaults to 0 |
 
-Each search result includes `case_id` (pass this as `caseId` to `fetch_judgment_text`), `case_number`, `date` (ISO date or `null`), `court`, `cause`, an optional `summary`, `source_url`, `search_source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, and `source_version`. The search response also includes `count`, `ambiguous`, `results`, `source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, `next_page`, and `source_version`. An `ambiguous` case-number search returns its candidates for you to choose from rather than selecting one.
+Each search result includes `case_id` (pass this as `caseId` to `fetch_judgment_text`), `case_number`, `date` (ISO date or `null`), `court`, `cause`, an optional `summary`, `source_url`, `search_source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, and `source_version`. The search response also includes `count`, `ambiguous`, `results`, `source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, `next_page`, `next_offset`, and `source_version`. Follow both `next_page` and `next_offset` to retrieve every result; `next_offset` may point to another batch on the same official page. An `ambiguous` case-number search returns its candidates for you to choose from rather than selecting one.
 
 The full-text response includes `case_id`, `date`, `full_text`, `source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, and `source_version`. Text is capped at 40,000 characters; when that cap is reached, `truncated` and `partial` are `true`. `cache.status` is `not_cached`; `source_version` is `null` when the official source provides no version identifier.
 
