@@ -1,6 +1,6 @@
 # @jurislm/judicial-mcp
 
-MCP (Model Context Protocol) server for [Taiwan Judicial Yuan](https://www.judicial.gov.tw) — provides 9 tools for searching public judgments and accessing open data.
+MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus current regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
 
 ## Public Judgment Search
 
@@ -23,9 +23,24 @@ The full-text response includes `case_id`, `date`, `full_text`, `source_url`, `r
 
 Only an explicit no-matches response from the official site is returned as an empty result. Upstream denial or failure, an unrecognized page, or a missing judgment is returned as an MCP error (`isError: true`) with `error.code`, `error.message`, `error.source_url`, and `error.retrieved_at`.
 
-### Planned: Statute Lookup (Phase 2)
+## Regulation Lookup
 
-Lookup by regulation name and article, with source links and bounded cache invalidation, is planned for phase 2 and is not available yet.
+`query_regulation` looks up one article by law name and article number in the Ministry of Justice's [National Laws and Regulations Database](https://law.moj.gov.tw/). It does not require credentials or an API token.
+
+```json
+{
+  "lawName": "民法",
+  "articleNumber": "1"
+}
+```
+
+The tool resolves only a unique exact law-name match after normalizing whitespace and the common `台` / `臺` spelling. It returns candidates with `status: "ambiguous"` when the name does not resolve uniquely; it never chooses a fuzzy match. Article numbers use Arabic numerals and may include a hyphen, such as `1` or `1-1`.
+
+Successful results include the regulation name and official identifier, one article's text, the official page URL, the lookup URL, retrieval time, and version metadata. The official page supplies consolidated current text; this tool does not provide historical versions. Amendment, promulgation, and effective dates are returned as ISO dates when the official page states them. Missing dates are `null` and mark the result `partial`; a pending or mixed effective date is identified in `version.effective_status`. `source_version` is the published amendment date, falling back to the promulgation date.
+
+Responses cap article text at 30,000 characters. `truncated` and `partial` are `true` when text is capped or required version details are missing. `cache.status` is `miss`, `hit`, `refreshed`, `revalidated`, or `not_cached`. A process-local least-recently-used cache holds at most 100 exact law/article lookups for 15 minutes. Set `refresh: true` to bypass the cache. Expired entries are revalidated with official HTTP validators when available; if an upstream refresh fails, the tool returns an error and does not serve stale text as current.
+
+Upstream failures and unrecognized page changes are MCP errors with `error.code`, `error.message`, `error.source_url`, and `error.retrieved_at`. Confirmed no-match, abolished-law, and missing-article responses have distinct codes.
 
 ## Tools
 
@@ -36,6 +51,9 @@ Lookup by regulation name and article, with source links and bounded cache inval
 ### Public Judgments (2 tools)
 - `search_judgments` — Search public judgments without a token
 - `fetch_judgment_text` — Get a judgment's full text by `case_id`, without a token
+
+### Regulations (1 tool)
+- `query_regulation` — Get one current regulation article and official version metadata, without a token
 
 ### Token-based Judgments (2 tools)
 - `list_judgments` — Get the judgment change list (requires `auth_token`)
@@ -59,7 +77,7 @@ JUDICIAL_PASSWORD=your_password
 
 ### Usage with Claude Code (via bunx)
 
-Install Bun first, then add this stdio server to your MCP configuration (`.mcp.json` or `~/.claude/settings.json`). The public judgment tools work without setting credentials:
+Install Bun first, then add this stdio server to your MCP configuration (`.mcp.json` or `~/.claude/settings.json`). The public judgment and regulation tools work without setting credentials:
 
 ```json
 {

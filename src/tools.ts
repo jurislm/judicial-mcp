@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { createBlobResponse } from './response.js'
 import { fetchJudgmentText, searchJudgments } from './public-judgment-source.js'
-import { JudicialSourceError } from './source-error.js'
+import { JudicialSourceError, RegulationSourceError } from './source-error.js'
+import { queryRegulation } from './regulation-source.js'
 
 // ─── Arg interfaces ──────────────────────────────────────────────────────────
 
@@ -18,6 +19,11 @@ export interface SearchJudgmentsArgs extends Record<string, unknown> {
   page?: number
 }
 export interface FetchJudgmentTextArgs extends Record<string, unknown> { caseId: string }
+export interface QueryRegulationArgs extends Record<string, unknown> {
+  lawName: string
+  articleNumber: string
+  refresh?: boolean
+}
 
 // ─── Input validation ────────────────────────────────────────────────────────
 
@@ -50,6 +56,13 @@ function optionalNumberArgument(params: Record<string, unknown>, key: string): n
   return value
 }
 
+function optionalBooleanArgument(params: Record<string, unknown>, key: string): boolean | undefined {
+  const value = params[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'boolean') throw new Error(`參數 ${key} 必須是布林值`)
+  return value
+}
+
 function searchJudgmentsArgs(params: Record<string, unknown>): SearchJudgmentsArgs {
   const args: SearchJudgmentsArgs = {}
   const keyword = optionalStringArgument(params, 'keyword')
@@ -72,6 +85,19 @@ function fetchJudgmentTextArgs(params: Record<string, unknown>): FetchJudgmentTe
   const caseId = params.caseId
   if (typeof caseId !== 'string') throw new Error('參數 caseId 必須是文字')
   return { caseId }
+}
+
+function queryRegulationArgs(params: Record<string, unknown>): QueryRegulationArgs {
+  validateInput.required(params, ['lawName', 'articleNumber'])
+  const lawName = optionalStringArgument(params, 'lawName')
+  const articleNumber = optionalStringArgument(params, 'articleNumber')
+  const refresh = optionalBooleanArgument(params, 'refresh')
+  if (!lawName || !articleNumber) throw new Error('法規名稱與條號不可為空')
+  return {
+    lawName,
+    articleNumber,
+    ...(refresh === undefined ? {} : { refresh }),
+  }
 }
 
 // ─── Error helper ────────────────────────────────────────────────────────────
@@ -217,6 +243,21 @@ export const TOOLS_CONFIG = {
       additionalProperties: false,
     },
   },
+
+  query_regulation: {
+    name: 'query_regulation',
+    description: '依官方法規名稱與條號查詢全國法規資料庫現行條文，回傳版本日期與官方來源；不提供歷史版本。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lawName: { type: 'string', description: '法規名稱；若名稱不是唯一精確匹配，會回傳候選清單' },
+        articleNumber: { type: 'string', description: '條號數字，可含連字號，例如 1 或 1-1' },
+        refresh: { type: 'boolean', description: '設為 true 時略過快取並重新讀取官方來源' },
+      },
+      required: ['lawName', 'articleNumber'],
+      additionalProperties: false,
+    },
+  },
 } as const
 
 // ─── Tool handlers ───────────────────────────────────────────────────────────
@@ -350,6 +391,15 @@ export const TOOL_HANDLERS: Record<string, (_args: Record<string, unknown>) => P
     } catch (error: unknown) {
       if (error instanceof JudicialSourceError) throw error
       throw new Error(`取得裁判全文失敗: ${apiErrorMessage(error)}`)
+    }
+  },
+
+  async query_regulation(args) {
+    try {
+      return await queryRegulation(queryRegulationArgs(args))
+    } catch (error: unknown) {
+      if (error instanceof RegulationSourceError) throw error
+      throw new Error(`查詢法規失敗: ${apiErrorMessage(error)}`)
     }
   },
 }
