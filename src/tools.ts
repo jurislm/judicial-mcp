@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { createBlobResponse } from './response.js'
 import { fetchJudgmentText, searchJudgments } from './public-judgment-source.js'
+import { JudicialSourceError } from './source-error.js'
 
 // ─── Arg interfaces ──────────────────────────────────────────────────────────
 
@@ -8,6 +9,15 @@ export interface TokenArgs { token: string }
 export interface GetJudgmentArgs { token: string; jid: string }
 export interface ListResourcesArgs { categoryNo: string; token: string }
 export interface DownloadFileArgs { fileSetId: string; token: string; top?: number; skip?: number }
+export interface SearchJudgmentsArgs extends Record<string, unknown> {
+  keyword?: string
+  court?: string
+  year?: number
+  caseNumber?: string
+  limit?: number
+  page?: number
+}
+export interface FetchJudgmentTextArgs extends Record<string, unknown> { caseId: string }
 
 // ─── Input validation ────────────────────────────────────────────────────────
 
@@ -24,6 +34,44 @@ const validateInput = {
       throw new Error('無效的授權 Token')
     }
   },
+}
+
+function optionalStringArgument(params: Record<string, unknown>, key: string): string | undefined {
+  const value = params[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new Error(`參數 ${key} 必須是文字`)
+  return value
+}
+
+function optionalNumberArgument(params: Record<string, unknown>, key: string): number | undefined {
+  const value = params[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'number') throw new Error(`參數 ${key} 必須是數字`)
+  return value
+}
+
+function searchJudgmentsArgs(params: Record<string, unknown>): SearchJudgmentsArgs {
+  const args: SearchJudgmentsArgs = {}
+  const keyword = optionalStringArgument(params, 'keyword')
+  const court = optionalStringArgument(params, 'court')
+  const year = optionalNumberArgument(params, 'year')
+  const caseNumber = optionalStringArgument(params, 'caseNumber')
+  const limit = optionalNumberArgument(params, 'limit')
+  const page = optionalNumberArgument(params, 'page')
+  if (keyword !== undefined) args.keyword = keyword
+  if (court !== undefined) args.court = court
+  if (year !== undefined) args.year = year
+  if (caseNumber !== undefined) args.caseNumber = caseNumber
+  if (limit !== undefined) args.limit = limit
+  if (page !== undefined) args.page = page
+  return args
+}
+
+function fetchJudgmentTextArgs(params: Record<string, unknown>): FetchJudgmentTextArgs {
+  validateInput.required(params, ['caseId'])
+  const caseId = params.caseId
+  if (typeof caseId !== 'string') throw new Error('參數 caseId 必須是文字')
+  return { caseId }
 }
 
 // ─── Error helper ────────────────────────────────────────────────────────────
@@ -288,10 +336,20 @@ export const TOOL_HANDLERS: Record<string, (_args: Record<string, unknown>) => P
   },
 
   async search_judgments(args) {
-    return searchJudgments(args)
+    try {
+      return await searchJudgments(searchJudgmentsArgs(args))
+    } catch (error: unknown) {
+      if (error instanceof JudicialSourceError) throw error
+      throw new Error(`搜尋裁判書失敗: ${apiErrorMessage(error)}`)
+    }
   },
 
   async fetch_judgment_text(args) {
-    return fetchJudgmentText(args)
+    try {
+      return await fetchJudgmentText(fetchJudgmentTextArgs(args))
+    } catch (error: unknown) {
+      if (error instanceof JudicialSourceError) throw error
+      throw new Error(`取得裁判全文失敗: ${apiErrorMessage(error)}`)
+    }
   },
 }

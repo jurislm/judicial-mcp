@@ -284,7 +284,7 @@ function hasNextPage(html: string, page: number): boolean {
     const link = $(anchor)
     const label = link.text().trim()
     const href = link.attr('href') ?? ''
-    if (/下一頁|下頁|next/i.test(label) || new URLSearchParams(href.split('?')[1] ?? '').get('page') === String(page + 1)) {
+    if (/^(?:下一頁|下頁|next)$/i.test(label) || new URLSearchParams(href.split('?')[1] ?? '').get('page') === String(page + 1)) {
       found = true
     }
   })
@@ -362,11 +362,12 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
   }
   const resultsHtml = sourceText(resultResponse.data, resultUrl)
   const allResults = parseResults(resultsHtml, resultUrl, retrievedAt)
-  const pageHasNext = hasNextPage(resultsHtml, criteria.page) && criteria.page < MAX_PAGE
+  const sourceHasNextPage = hasNextPage(resultsHtml, criteria.page)
+  const pageHasNext = sourceHasNextPage && criteria.page < MAX_PAGE
   const pageResults = allResults.slice(0, criteria.limit)
-  const truncated = allResults.length > criteria.limit || pageHasNext || pageResults.some(result => result.truncated)
+  const truncated = allResults.length > criteria.limit || sourceHasNextPage || pageResults.some(result => result.truncated)
   const ambiguous = Boolean(
-    criteria.caseNumber && (allResults.length > 1 || criteria.page > 1 || pageHasNext),
+    criteria.caseNumber && (allResults.length > 1 || criteria.page > 1 || sourceHasNextPage),
   )
   return {
     count: pageResults.length,
@@ -376,7 +377,7 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
     retrieved_at: retrievedAt,
     cache: { status: 'not_cached' },
     truncated,
-    partial: false,
+    partial: sourceHasNextPage && !pageHasNext,
     next_page: pageHasNext ? criteria.page + 1 : null,
     source_version: null,
   }

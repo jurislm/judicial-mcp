@@ -154,6 +154,47 @@ describe('judgment search and text tools', () => {
     if (Array.isArray(results)) expect(results).toHaveLength(2)
   })
 
+  test('ignores unrelated links containing the word next when determining ambiguity', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: `${resultPage}<a href="#">Next citation</a>`, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>',
+      headers: {},
+    })
+
+    const data = toolData(await dispatchTool('search_judgments', { caseNumber: '1234' }))
+
+    expect(data).toMatchObject({ count: 1, ambiguous: false, truncated: false, next_page: null })
+  })
+
+  test('reports results omitted by the page limit as truncated and partial', async () => {
+    const finalPage = resultPage.replace(
+      '</table>',
+      '</table><a href="qryresultlst.aspx?page=51">下一頁</a>',
+    )
+    mockedAxios.get.mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: finalPage, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>',
+      headers: {},
+    })
+
+    const data = toolData(await dispatchTool('search_judgments', { caseNumber: '1234', page: 50 }))
+
+    expect(data).toMatchObject({
+      count: 1,
+      ambiguous: true,
+      truncated: true,
+      partial: true,
+      next_page: null,
+    })
+  })
+
+  test('requires a case ID before attempting full-text retrieval', async () => {
+    await expect(dispatchTool('fetch_judgment_text', {})).rejects.toThrow('缺少必要參數: caseId')
+    expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+
   test('returns an explicit empty result only when the official page says there are no matches', async () => {
     mockedAxios.get.mockResolvedValueOnce({ data: searchForm, headers: {} })
     mockedAxios.post.mockResolvedValueOnce({ data: '<div>查無符合條件的裁判書資料</div>', headers: {} })
