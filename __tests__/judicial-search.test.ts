@@ -236,4 +236,15 @@ describe('judgment search and text tools', () => {
       code: 'source_changed',
     })
   })
+
+  test('does not report an unrecognized judgment page as a missing case', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: '<html><body>unexpected page layout</body></html>', headers: {} })
+
+    await expect(dispatchTool('fetch_judgment_text', {
+      caseId: 'TPDV,113,訴,1234,20240401,1',
+    })).rejects.toMatchObject({
+      name: 'JudicialSourceError',
+      code: 'source_changed',
+    })
+  })
 })

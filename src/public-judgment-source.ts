@@ -38,6 +38,9 @@ interface JudgmentSearchResult {
   search_source_url: string
   retrieved_at: string
   cache: { status: 'not_cached' }
+  truncated: boolean
+  partial: false
+  source_version: null
 }
 
 function optionalString(args: Record<string, unknown>, name: string, maxLength: number): string | undefined {
@@ -250,7 +253,8 @@ function parseResults(html: string, sourceUrl: URL, retrievedAt: string): Judgme
     const cells = currentRow.find('td')
     if (cells.length < 4) throw new JudicialSourceError('source_changed', sourceUrl.href)
     const summaryRow = currentRow.next('tr.summary')
-    const summary = summaryRow.find('span.tdCut').text().trim().slice(0, MAX_SUMMARY_LENGTH)
+    const rawSummary = summaryRow.find('span.tdCut').text().trim()
+    const summary = rawSummary.slice(0, MAX_SUMMARY_LENGTH)
     const date = resultDate(cells.eq(2).text(), caseId)
     const candidate: JudgmentSearchResult = {
       case_id: caseId,
@@ -262,6 +266,9 @@ function parseResults(html: string, sourceUrl: URL, retrievedAt: string): Judgme
       search_source_url: sourceUrl.href,
       retrieved_at: retrievedAt,
       cache: { status: 'not_cached' },
+      truncated: rawSummary.length > MAX_SUMMARY_LENGTH,
+      partial: false,
+      source_version: null,
     }
     if (summary) candidate.summary = summary
     results.push(candidate)
@@ -357,7 +364,7 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
   const allResults = parseResults(resultsHtml, resultUrl, retrievedAt)
   const pageHasNext = hasNextPage(resultsHtml, criteria.page) && criteria.page < MAX_PAGE
   const pageResults = allResults.slice(0, criteria.limit)
-  const truncated = allResults.length > criteria.limit || pageHasNext
+  const truncated = allResults.length > criteria.limit || pageHasNext || pageResults.some(result => result.truncated)
   const ambiguous = Boolean(
     criteria.caseNumber && (allResults.length > 1 || criteria.page > 1 || pageHasNext),
   )
@@ -387,8 +394,11 @@ export async function fetchJudgmentText(args: Record<string, unknown>): Promise<
   }
   const html = sourceText(response.data, url)
   const $ = load(html)
+  const noResults = NO_RESULTS.test($('body').text())
   const judgment = $('#jud').first()
-  if (!judgment.length) throw new JudicialSourceError('source_not_found', url.href)
+  if (!judgment.length) {
+    throw new JudicialSourceError(noResults ? 'source_not_found' : 'source_changed', url.href)
+  }
   judgment.find('br').replaceWith('\n')
   judgment.find('div, p, tr').each((_, element) => {
     $(element).append('\n')
@@ -398,7 +408,7 @@ export async function fetchJudgmentText(args: Record<string, unknown>): Promise<
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
-  if (!fullText) throw new JudicialSourceError('source_not_found', url.href)
+  if (!fullText) throw new JudicialSourceError(noResults ? 'source_not_found' : 'source_changed', url.href)
   const truncated = fullText.length > MAX_TEXT_LENGTH
   return {
     case_id: caseId,

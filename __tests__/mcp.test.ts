@@ -1,9 +1,114 @@
 import { describe, test, expect, vi } from 'vitest'
+import { spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
+import type { Writable } from 'node:stream'
 import { TOOLS_CONFIG, TOOL_HANDLERS } from '../src/tools.js'
 
 vi.mock('axios')
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+async function readResponse(
+  lines: AsyncIterator<string>,
+  id: number,
+  stderr: () => string,
+): Promise<Record<string, unknown>> {
+  while (true) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const next = await Promise.race([
+      lines.next(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`MCP response ${id} timed out: ${stderr()}`)), 10_000)
+      }),
+    ]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
+    if (next.done) throw new Error(`MCP server closed before response ${id}: ${stderr()}`)
+    const parsed: unknown = JSON.parse(next.value)
+    if (isRecord(parsed) && parsed.id === id) return parsed
+  }
+}
+
+function sendMessage(
+  input: Writable,
+  message: Record<string, unknown>,
+): void {
+  input.write(`${JSON.stringify(message)}\n`)
+}
+
 describe('MCP 伺服器測試', () => {
+  test('stdio 啟動、列出 token-free 工具並安全處理搜尋驗證錯誤', async () => {
+    const child = spawn('bun', ['src/index.ts'], {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const lines = createInterface({ input: child.stdout })
+    const iterator = lines[Symbol.asyncIterator]()
+    let stderrText = ''
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => {
+      stderrText = `${stderrText}${chunk}`.slice(-2_000)
+    })
+
+    try {
+      sendMessage(child.stdin, {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'judicial-mcp-contract-test', version: '1.0.0' },
+        },
+      })
+      const initialized = await readResponse(iterator, 1, () => stderrText)
+      expect(isRecord(initialized.result)).toBe(true)
+
+      sendMessage(child.stdin, { jsonrpc: '2.0', method: 'notifications/initialized' })
+      sendMessage(child.stdin, { jsonrpc: '2.0', id: 2, method: 'tools/list' })
+      const listed = await readResponse(iterator, 2, () => stderrText)
+      const listResult = listed.result
+      expect(isRecord(listResult)).toBe(true)
+      if (!isRecord(listResult) || !Array.isArray(listResult.tools)) {
+        throw new Error(`Invalid tools/list response: ${JSON.stringify(listed)}`)
+      }
+      const tools = listResult.tools.filter(isRecord)
+      const searchTool = tools.find(tool => tool.name === 'search_judgments')
+      const fetchTool = tools.find(tool => tool.name === 'fetch_judgment_text')
+      expect(searchTool).toBeDefined()
+      expect(fetchTool).toBeDefined()
+      if (!isRecord(searchTool?.inputSchema) || !isRecord(fetchTool?.inputSchema)) {
+        throw new Error('New MCP tools did not expose object input schemas')
+      }
+      expect(isRecord(searchTool.inputSchema.properties)).toBe(true)
+      expect(isRecord(fetchTool.inputSchema.properties)).toBe(true)
+      if (!isRecord(searchTool.inputSchema.properties) || !isRecord(fetchTool.inputSchema.properties)) {
+        throw new Error('New MCP tools did not expose input properties')
+      }
+      expect(searchTool.inputSchema.properties).not.toHaveProperty('token')
+      expect(fetchTool.inputSchema.properties).not.toHaveProperty('token')
+
+      sendMessage(child.stdin, {
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
+        params: { name: 'search_judgments', arguments: {} },
+      })
+      const called = await readResponse(iterator, 3, () => stderrText)
+      expect(isRecord(called.result)).toBe(true)
+      if (!isRecord(called.result)) throw new Error(`Invalid tools/call response: ${JSON.stringify(called)}`)
+      expect(called.result.isError).toBe(true)
+      expect(called.result.content).toEqual([
+        expect.objectContaining({ type: 'text', text: expect.stringContaining('至少需要提供 keyword') }),
+      ])
+    } finally {
+      lines.close()
+      child.kill('SIGTERM')
+    }
+  }, 20_000)
+
   describe('工具配置', () => {
     test('所有工具都有必要的屬性', () => {
       const tools = Object.values(TOOLS_CONFIG)
