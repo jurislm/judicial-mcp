@@ -296,6 +296,19 @@ describe('query_regulation', () => {
       code: 'source_changed',
     })
 
+    const emptyRowPage = `
+      <main id="content"><h1>民法</h1>
+        <div class="law-reg-content">
+          <div class="col-no">第 1 條</div>
+          <div class="col-data"></div>
+        </div>
+      </main>
+    `
+    queueLawResponse(lawSearch, emptyRowPage)
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '99999' })).rejects.toMatchObject({
+      code: 'source_changed',
+    })
+
     const recognizedPage = `
       <main id="content"><h1>民法</h1>
         <div class="law-reg-content">

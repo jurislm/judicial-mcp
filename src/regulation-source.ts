@@ -267,7 +267,7 @@ function articleBlockText(block: ArticleBlock, articleNumber: string): string | 
 function isArticleBlock(block: ArticleBlock): boolean {
   const heading = block.find('.col-no, .law-reg-no, .article-number').first().text().trim()
   const content = block.find('.col-data, .law-reg-content-text, .article-content').first()
-  return /^第\s*\d+(?:-\d+)?\s*條/.test(heading) && content.length > 0 && content.html() !== null
+  return /^第\s*\d+(?:-\d+)?\s*條/.test(heading) && content.length > 0 && content.text().trim().length > 0
 }
 
 function parseArticle(html: string, url: URL, lawName: string, articleNumber: string): ParsedArticle {
