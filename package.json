@@ -1,6 +1,6 @@
 {
   "name": "@jurislm/judicial-mcp",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "MCP server for accessing Taiwan Judicial Yuan open data and judgments.",
   "keywords": [
     "mcp",
