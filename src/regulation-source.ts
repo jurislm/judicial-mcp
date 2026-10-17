@@ -10,6 +10,7 @@ import { RegulationSourceError } from './source-error.js'
 
 const BASE_URL = 'https://law.moj.gov.tw'
 const SEARCH_URL = new URL('/Law/LawSearchResult.aspx', BASE_URL)
+const TERM_URL = new URL('/controls/GetTermList.ashx', BASE_URL)
 const RESPONSE_LIMIT = 2_000_000
 const MAX_ARTICLE_LENGTH = 30_000
 const MAX_CANDIDATES = 10
@@ -123,6 +124,13 @@ function searchUrl(name: string): URL {
   return url
 }
 
+function termUrl(name: string): URL {
+  const url = new URL(TERM_URL.href)
+  url.searchParams.set('term', name)
+  url.searchParams.set('type', 'ONEBAR')
+  return url
+}
+
 function detailUrl(identifier: string): URL {
   const url = new URL('/LawClass/LawAll.aspx', BASE_URL)
   url.searchParams.set('pcode', identifier)
@@ -152,13 +160,13 @@ function responseHeader(response: AxiosResponse<string>, name: string): string |
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-function sourceFailure(error: unknown, url: URL): never {
+function sourceFailure(error: unknown, url: URL, notFoundOn404 = true): never {
   const status = error !== null && typeof error === 'object' && 'response' in error
     ? (error.response !== null && typeof error.response === 'object' && 'status' in error.response
       ? error.response.status
       : undefined)
     : undefined
-  throw new RegulationSourceError(status === 404 ? 'regulation_not_found' : 'source_unavailable', url.href)
+  throw new RegulationSourceError(status === 404 && notFoundOn404 ? 'regulation_not_found' : 'source_unavailable', url.href)
 }
 
 function responseHtml(response: AxiosResponse<string>, url: URL): string {
@@ -172,10 +180,34 @@ function validPcode(value: string | undefined): value is string {
   return value !== undefined && /^[A-Z]\d{7}$/.test(value.toLocaleUpperCase())
 }
 
+function parseTermCandidates(payload: string, lawName: string, url: URL): RegulationCandidate[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(payload)
+  } catch {
+    throw new RegulationSourceError('source_changed', url.href)
+  }
+  if (!Array.isArray(parsed)) throw new RegulationSourceError('source_changed', url.href)
+  const candidates: RegulationCandidate[] = []
+  for (const item of parsed) {
+    if (!isRecord(item) || typeof item.PCODE !== 'string' || typeof item.TERM !== 'string') {
+      throw new RegulationSourceError('source_changed', url.href)
+    }
+    const identifier = item.PCODE.trim()
+    const name = item.TERM.replaceAll(/\s+/g, ' ').trim()
+    if (identifier.length === 0 || normalizeName(name) !== normalizeName(lawName)) continue
+    if (!validPcode(identifier) || name.length === 0) throw new RegulationSourceError('source_changed', url.href)
+    const normalizedIdentifier = identifier.toLocaleUpperCase()
+    const duplicate = candidates.find(candidate => candidate.identifier === normalizedIdentifier && normalizeName(candidate.name) === normalizeName(name))
+    if (!duplicate) candidates.push({ name, identifier: normalizedIdentifier, abolished: false })
+  }
+  return candidates
+}
+
 function parseCandidates(html: string, url: URL): RegulationCandidate[] {
   const $ = load(html)
   const candidates: RegulationCandidate[] = []
-  $('a[href*="LawAll.aspx"]').each((_, element) => {
+  $('a[href*="AddHotLaw.ashx"]').each((_, element) => {
     const anchor = $(element)
     const href = anchor.attr('href')
     if (!href) return
@@ -185,7 +217,7 @@ function parseCandidates(html: string, url: URL): RegulationCandidate[] {
     } catch {
       throw new RegulationSourceError('source_changed', url.href)
     }
-    if (link.protocol !== 'https:' || link.hostname !== 'law.moj.gov.tw' || link.pathname.toLocaleLowerCase() !== '/lawclass/lawall.aspx') {
+    if (link.protocol !== 'https:' || link.hostname !== 'law.moj.gov.tw' || link.pathname.toLocaleLowerCase() !== '/hot/addhotlaw.ashx') {
       throw new RegulationSourceError('source_changed', url.href)
     }
     const identifier = link.searchParams.get('pcode') ?? link.searchParams.get('PCODE')
@@ -194,7 +226,9 @@ function parseCandidates(html: string, url: URL): RegulationCandidate[] {
     if (!displayName) throw new RegulationSourceError('source_changed', url.href)
     const row = anchor.closest('tr')
     const rowText = (row.length ? row.text() : anchor.parent().text()).replaceAll(/\s+/g, ' ').trim()
-    const abolished = /^廢\s+/.test(displayName) || /^廢(?!棄)/.test(displayName) || /(?:法規狀態|狀態)\s*[:：]?\s*(?:已)?廢止/.test(rowText)
+    const rowTitle = rowText.replace(/^\d+\.?\s*/, '')
+    const abolished = (/^廢(?!棄)/.test(rowTitle) && normalizeName(rowTitle).includes(normalizeName(displayName))) ||
+      /^廢(?!棄)/.test(displayName) || /(?:法規狀態|狀態)\s*[:：]?\s*(?:已)?廢止/.test(rowText)
     const name = abolished ? displayName.replace(/^廢(?:止)?\s*/, '').trim() : displayName
     const normalizedIdentifier = identifier.toLocaleUpperCase()
     const duplicate = candidates.find(candidate => candidate.identifier === normalizedIdentifier && normalizeName(candidate.name) === normalizeName(name))
@@ -273,11 +307,18 @@ function isArticleBlock(block: ArticleBlock): boolean {
 function parseArticle(html: string, url: URL, lawName: string, articleNumber: string): ParsedArticle {
   const $ = load(html)
   const pageText = normalizeArticleText($('main, #content, #law_content').first().text() || $('body').text())
+  const metadataText = regulationMetadataText(pageText)
+  if (/法規名稱\s*[:：]\s*廢\s/.test(metadataText) || /廢止日期\s*[:：]/.test(metadataText)) {
+    throw new RegulationSourceError('regulation_abolished', url.href)
+  }
   if (!pageText || !normalizeName(pageText).includes(normalizeName(lawName))) {
     throw new RegulationSourceError('source_changed', url.href)
   }
   let articleText: string | undefined
-  const blocks = $('.law-reg-content, .law-article, .article-content-row, [id^="law-reg-content"]').toArray()
+  const numberedRows = $('.law-reg-content > .row').toArray()
+  const blocks = numberedRows.length > 0
+    ? numberedRows
+    : $('.law-reg-content, .law-article, .article-content-row, [id^="law-reg-content"]').toArray()
   if (blocks.length === 0 || blocks.some(block => !isArticleBlock($(block)))) {
     throw new RegulationSourceError('source_changed', url.href)
   }
@@ -288,7 +329,6 @@ function parseArticle(html: string, url: URL, lawName: string, articleNumber: st
   if (!articleText) {
     throw new RegulationSourceError('regulation_article_not_found', url.href)
   }
-  const metadataText = regulationMetadataText(pageText)
   const version: RegulationVersion = {
     amendment_date: dateForLabel(metadataText, ['修正日期', '修正日']),
     promulgation_date: dateForLabel(metadataText, ['公布日期', '發布日期']),
@@ -379,6 +419,37 @@ async function fetchHtml(url: URL, cacheEntry?: Pick<ValidatedRegulationCacheEnt
   return { response, html: responseHtml(response, url) }
 }
 
+async function fetchTermCandidates(name: string, url: URL): Promise<RegulationCandidate[]> {
+  let response: AxiosResponse<string>
+  try {
+    const options = requestOptions()
+    response = await axios.post<string>(
+      url.href,
+      new URLSearchParams({ term: name, type: 'ONEBAR' }).toString(),
+      {
+        ...options,
+        headers: { ...options.headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+      },
+    )
+  } catch (error: unknown) {
+    sourceFailure(error, url, false)
+  }
+  if (response.status < 200 || response.status >= 300) throw new RegulationSourceError('source_changed', url.href)
+  return parseTermCandidates(responseHtml(response, url), name, url)
+}
+
+async function lookupRegulation(lawName: string): Promise<{ resolution: CandidateResolution; lookupURL: URL }> {
+  const directURL = termUrl(lawName)
+  const directCandidates = await fetchTermCandidates(lawName, directURL)
+  if (directCandidates.length > 0) {
+    return { resolution: resolveCandidate(directCandidates, lawName, directURL), lookupURL: directURL }
+  }
+  const lookupURL = searchUrl(lawName)
+  const lookup = await fetchHtml(lookupURL)
+  if (lookup.html === null) throw new RegulationSourceError('source_changed', lookupURL.href)
+  return { resolution: resolveCandidate(parseCandidates(lookup.html, lookupURL), lawName, lookupURL), lookupURL }
+}
+
 export async function queryRegulation(args: Record<string, unknown>): Promise<RegulationResult> {
   const lawName = validateName(args.lawName)
   const articleNumber = validateArticleNumber(args.articleNumber)
@@ -398,12 +469,10 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
 
   if (refresh) deleteRegulationCacheEntry(key)
   if (cached && cached.expiresAt <= now && !refresh) {
-    const lookupURL = searchUrl(lawName)
     const checkedAt = new Date().toISOString()
     try {
-      const lookup = await fetchHtml(lookupURL)
-      if (lookup.html === null) throw new RegulationSourceError('source_changed', lookupURL.href)
-      const resolution = resolveCandidate(parseCandidates(lookup.html, lookupURL), lawName, lookupURL)
+      const lookup = await lookupRegulation(lawName)
+      const { lookupURL, resolution } = lookup
       if ('ambiguous' in resolution) {
         deleteRegulationCacheEntry(key)
         return resolution.ambiguous
@@ -442,11 +511,8 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
     }
   }
 
-  const lookupURL = searchUrl(lawName)
-  const lookup = await fetchHtml(lookupURL)
-  if (lookup.html === null) throw new RegulationSourceError('source_changed', lookupURL.href)
-  const candidates = parseCandidates(lookup.html, lookupURL)
-  const resolution = resolveCandidate(candidates, lawName, lookupURL)
+  const lookup = await lookupRegulation(lawName)
+  const { lookupURL, resolution } = lookup
   if ('ambiguous' in resolution) return resolution.ambiguous
   const candidate = resolution.candidate
   if (candidate.abolished) throw new RegulationSourceError('regulation_abolished', lookupURL.href)

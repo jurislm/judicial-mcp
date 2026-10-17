@@ -28,11 +28,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-const lawSearch = `
-  <table id="lawData"><tr>
-    <td><a href="../LawClass/LawAll.aspx?PCODE=B0000001">民法</a></td>
-    <td>民國 115 年 08 月 17 日</td>
-  </tr></table>
+const lawSearch = '[{"PCODE":"B0000001","TERM":"民法"}]'
+
+const officialLawSearchResults = `
+  <table class="table-hover tab-list tab-result">
+    <tr>
+      <td>1.</td>
+      <td><a href="../Hot/AddHotLaw.ashx?pcode=B0000001&amp;cur=Ld&amp;kw=%E6%B0%91%E6%B3%95">民法</a></td>
+      <td>
+        <a href="../ENG/LawClass/LawAll.aspx?pcode=B0000001">EN</a>
+        <a href="../LawClass/LawAll.aspx?PCODE=B0000001">本法規有附件</a>
+      </td>
+    </tr>
+  </table>
 `
 
 const lawArticle = `
@@ -42,13 +50,17 @@ const lawArticle = `
     <div>公布日期： | 民國 115 年 08 月 17 日</div>
     <div>施行日期： | 民國 115 年 08 月 17 日</div>
     <div class="law-reg-content">
-      <div class="col-no"><a href="LawSingle.aspx?pcode=B0000001&amp;flno=1">第 1 條</a></div>
-      <div class="col-data"><p>民事，法律所未規定者，依習慣；</p><p>無習慣者，依法理。</p></div>
+      <div class="row">
+        <div class="col-no"><a href="LawSingle.aspx?pcode=B0000001&amp;flno=1">第 1 條</a></div>
+        <div class="col-data"><p>民事，法律所未規定者，依習慣；</p><p>無習慣者，依法理。</p></div>
+      </div>
+      <div class="row">
+        <div class="col-no"><a href="LawSingle.aspx?pcode=B0000001&amp;flno=2">第 2 條</a></div>
+        <div class="col-data">第二條內容不得混入第一條。</div>
+      </div>
     </div>
-    <div class="law-reg-content">
-      <div class="col-no"><a href="LawSingle.aspx?pcode=B0000001&amp;flno=2">第 2 條</a></div>
-      <div class="col-data">第二條內容不得混入第一條。</div>
-    </div>
+    <div class="law-article"><div class="line-0000">民事，法律所未規定者，依習慣；無習慣者，依法理。</div></div>
+    <div class="law-article"><div class="line-0000">民事所適用之習慣，以不背於公共秩序或善良風俗者為限。</div></div>
   </main>
 `
 
@@ -63,14 +75,13 @@ function textData(result: Awaited<ReturnType<typeof dispatchTool>>): Record<stri
 }
 
 function queueLawResponse(
-  searchHtml = lawSearch,
+  termPayload = lawSearch,
   articleHtml = lawArticle,
-  searchHeaders: Record<string, string> = {},
+  termHeaders: Record<string, string> = {},
   articleHeaders: Record<string, string> = {},
 ): void {
-  mockedAxios.get
-    .mockResolvedValueOnce({ data: searchHtml, headers: searchHeaders })
-    .mockResolvedValueOnce({ data: articleHtml, headers: articleHeaders })
+  mockedAxios.post.mockResolvedValueOnce({ data: termPayload, headers: termHeaders })
+  mockedAxios.get.mockResolvedValueOnce({ data: articleHtml, headers: articleHeaders })
 }
 
 beforeEach(() => {
@@ -105,13 +116,14 @@ describe('query_regulation', () => {
       articleNumber: '1',
     }))
 
-    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+    expect(mockedAxios.post).toHaveBeenNthCalledWith(
       1,
-      'https://law.moj.gov.tw/Law/LawSearchResult.aspx?cur=Ld&ty=ONEBAR&kw=%E6%B0%91%E6%B3%95&psize=20',
+      'https://law.moj.gov.tw/controls/GetTermList.ashx?term=%E6%B0%91%E6%B3%95&type=ONEBAR',
+      'term=%E6%B0%91%E6%B3%95&type=ONEBAR',
       expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
     )
     expect(mockedAxios.get).toHaveBeenNthCalledWith(
-      2,
+      1,
       'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
       expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
     )
@@ -134,9 +146,25 @@ describe('query_regulation', () => {
     })
   })
 
+  test('reads a law result code without treating English or attachment links as regulation candidates', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: '[{"PCODE":"","TERM":"民法"}]', headers: {} })
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: officialLawSearchResults, headers: {} })
+      .mockResolvedValueOnce({ data: lawArticle, headers: {} })
+
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+
+    expect(data).toMatchObject({ status: 'current', regulation_name: '民法', regulation_id: 'B0000001' })
+    expect(mockedAxios.get).toHaveBeenLastCalledWith(
+      'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+      expect.objectContaining({ maxRedirects: 0 }),
+    )
+  })
+
   test('does not choose among fuzzy name matches', async () => {
-    const candidates = `<table><tr><td><a href="../LawClass/LawAll.aspx?pcode=B0000001">民法</a></td></tr>
-      <tr><td><a href="../LawClass/LawAll.aspx?pcode=B0000002">民法施行法</a></td></tr></table>`
+    const candidates = `<table class="tab-result"><tr><td>1.</td><td><a href="../Hot/AddHotLaw.ashx?pcode=B0000001&amp;cur=Ld">民法</a></td></tr>
+      <tr><td>2.</td><td><a href="../Hot/AddHotLaw.ashx?pcode=B0000002&amp;cur=Ld">民法施行法</a></td></tr></table>`
+    mockedAxios.post.mockResolvedValueOnce({ data: '[{"PCODE":"","TERM":"民法"}]', headers: {} })
     mockedAxios.get.mockResolvedValueOnce({ data: candidates, headers: {} })
 
     const data = textData(await dispatchTool('query_regulation', {
@@ -149,16 +177,20 @@ describe('query_regulation', () => {
       { regulation_name: '民法', regulation_id: 'B0000001' },
       { regulation_name: '民法施行法', regulation_id: 'B0000002' },
     ])
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
     expect(mockedAxios.get).toHaveBeenCalledTimes(1)
   })
 
   test('reports abolished law as a typed source error', async () => {
-    const abolished = `<table><tr><td><a href="../LawClass/LawAll.aspx?pcode=B0000001">廢民法</a></td></tr></table>`
+    const lawName = '九二一震災重建暫行條例'
+    const term = JSON.stringify([{ PCODE: 'A0030110', TERM: lawName }])
+    const abolished = `<main id="content"><h1>${lawName}</h1><div>法規名稱：廢 ${lawName}</div><div>廢止日期：民國 95 年 02 月 05 日</div></main>`
+    mockedAxios.post.mockResolvedValueOnce({ data: term, headers: {} })
     mockedAxios.get.mockResolvedValueOnce({ data: abolished, headers: {} })
 
     let failure: unknown
     try {
-      await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })
+      await dispatchTool('query_regulation', { lawName, articleNumber: '1' })
     } catch (error: unknown) {
       failure = error
     }
@@ -167,11 +199,11 @@ describe('query_regulation', () => {
     const response = createErrorResponse(failure, 'unused')
     expect(response.isError).toBe(true)
     const data: unknown = JSON.parse(response.content[0]?.type === 'text' ? response.content[0].text : '{}')
-    expect(data).toMatchObject({ error: { code: 'regulation_abolished', source_url: expect.stringContaining('LawSearchResult.aspx') } })
+    expect(data).toMatchObject({ error: { code: 'regulation_abolished', source_url: expect.stringContaining('LawAll.aspx') } })
   })
 
   test('does not mistake an active law beginning with 廢棄 for an abolished law', async () => {
-    const search = lawSearch.replace('B0000001">民法', 'B0000002">廢棄物清理法')
+    const search = '[{"PCODE":"B0000002","TERM":"廢棄物清理法"}]'
     const article = lawArticle.replaceAll('民法', '廢棄物清理法')
     queueLawResponse(search, article)
 
@@ -185,7 +217,8 @@ describe('query_regulation', () => {
     const cached = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
     expect(first.cache).toEqual({ status: 'miss' })
     expect(cached.cache).toEqual({ status: 'hit' })
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1)
 
     queueLawResponse(lawSearch, lawArticle)
     const refreshed = textData(await dispatchTool('query_regulation', {
@@ -194,7 +227,8 @@ describe('query_regulation', () => {
       refresh: true,
     }))
     expect(refreshed.cache).toEqual({ status: 'refreshed' })
-    expect(mockedAxios.get).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
   })
 
   test('revalidates expired cache with official validators and never presents a failed refresh as current', async () => {
@@ -203,11 +237,12 @@ describe('query_regulation', () => {
     queueLawResponse(lawSearch, lawArticle, {}, { etag: '"article-v1"' })
     await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })
     vi.advanceTimersByTime(16 * 60 * 1000)
-    mockedAxios.get.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
     mockedAxios.get.mockResolvedValueOnce({ data: '', status: 304, headers: {} })
 
     const revalidated = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
-    expect(mockedAxios.get).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
     expect(mockedAxios.get).toHaveBeenLastCalledWith(
       expect.stringContaining('/LawClass/LawAll.aspx'),
       expect.objectContaining({ headers: expect.objectContaining({ 'If-None-Match': '"article-v1"' }) }),
@@ -215,11 +250,12 @@ describe('query_regulation', () => {
     expect(revalidated.cache).toEqual({ status: 'revalidated' })
 
     vi.advanceTimersByTime(16 * 60 * 1000)
-    mockedAxios.get.mockRejectedValueOnce(new Error('network unavailable'))
+    mockedAxios.post.mockRejectedValueOnce(new Error('network unavailable'))
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'source_unavailable',
     })
-    expect(mockedAxios.get).toHaveBeenCalledTimes(5)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(3)
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
   })
 
   test('checks official status again after cache expiry and does not return an abolished law as current', async () => {
@@ -228,18 +264,19 @@ describe('query_regulation', () => {
     queueLawResponse()
     await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })
     vi.advanceTimersByTime(16 * 60 * 1000)
-    mockedAxios.get.mockResolvedValueOnce({
-      data: '<table><tr><td><a href="../LawClass/LawAll.aspx?pcode=B0000001">廢民法</a></td></tr></table>',
-      headers: {},
-    })
+    const abolished = '<main id="content"><h1>民法</h1><div>法規名稱：廢 民法</div><div>廢止日期：民國 95 年 02 月 05 日</div></main>'
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+    mockedAxios.get.mockResolvedValueOnce({ data: abolished, headers: {} })
 
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'regulation_abolished',
     })
-    expect(mockedAxios.get).toHaveBeenCalledTimes(3)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
   })
 
   test('distinguishes a confirmed no-match response from an upstream failure', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: '[]', headers: {} })
     mockedAxios.get.mockResolvedValueOnce({ data: '<main>查無符合條件的法規</main>', headers: {} })
     let failure: unknown
     try {
@@ -250,7 +287,7 @@ describe('query_regulation', () => {
     expect(failure).toMatchObject({ code: 'regulation_not_found' })
 
     clearRegulationCache()
-    mockedAxios.get.mockRejectedValueOnce(new Error('network unavailable'))
+    mockedAxios.post.mockRejectedValueOnce(new Error('network unavailable'))
     await expect(dispatchTool('query_regulation', { lawName: '不存在法規', articleNumber: '1' })).rejects.toMatchObject({
       code: 'source_unavailable',
     })
