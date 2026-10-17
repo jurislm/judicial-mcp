@@ -1,27 +1,37 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const root = new URL('../', import.meta.url)
-const readJson = (name: string) => JSON.parse(readFileSync(new URL(name, root), 'utf8'))
+const config = JSON.parse(readFileSync(new URL('release-please-config.json', root), 'utf8'))
+const excludePaths: string[] = config.packages['.']['exclude-paths'].map((path: string) => path.replace(/^\//, '').replace(/\/$/, ''))
 
-const excludePaths: string[] = readJson('release-please-config.json').packages['.']['exclude-paths']
-const packagedPaths: string[] = [...readJson('package.json').files, 'package.json', 'LICENSE']
+const skipsFile = (excluded: string, file: string) => excluded === '.' || file.startsWith(`${excluded}/`)
 
-const overlaps = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)
+const packedFiles = (): string[] => {
+  const output = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+    cwd: fileURLToPath(root),
+    encoding: 'utf8',
+  })
+  return JSON.parse(output)[0].files.map((file: { path: string }) => file.path)
+}
 
 describe('release-please exclude-paths', () => {
-  it('never skips a commit that changes a file published to npm', () => {
+  it('never skips a commit that changes a file npm publishes', () => {
+    const files = packedFiles()
+    expect(files).toContain('src/index.ts')
     const conflicts = excludePaths.flatMap((excluded) =>
-      packagedPaths.filter((packaged) => overlaps(excluded, packaged)).map((packaged) => `${excluded} ↔ ${packaged}`),
+      files.filter((file) => skipsFile(excluded, file)).map((file) => `${excluded} ↔ ${file}`),
     )
     expect(conflicts).toEqual([])
   })
 
-  it('lists only existing directories, because release-please matches exclude-paths by directory prefix', () => {
-    const notDirectories = excludePaths.filter((path) => {
+  it('lists only existing subdirectories, because release-please matches exclude-paths by directory prefix', () => {
+    const invalid = excludePaths.filter((path) => {
       const url = new URL(path, root)
-      return !existsSync(url) || !statSync(url).isDirectory()
+      return path === '.' || !existsSync(url) || !statSync(url).isDirectory()
     })
-    expect(notDirectories).toEqual([])
+    expect(invalid).toEqual([])
   })
 })
