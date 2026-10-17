@@ -1,4 +1,4 @@
-import { JudicialSourceError } from './source-error.js'
+import { JudicialSourceError, RegulationSourceError } from './source-error.js'
 
 type ContentBlock =
   | { type: 'text'; text: string }
@@ -20,7 +20,7 @@ export const createSuccessResponse = (data: unknown): McpToolResult => ({
 })
 
 export const createErrorResponse = (error: unknown, message: string): McpToolResult => {
-  if (error instanceof JudicialSourceError) {
+  if (error instanceof JudicialSourceError || error instanceof RegulationSourceError) {
     return {
       content: [
         {

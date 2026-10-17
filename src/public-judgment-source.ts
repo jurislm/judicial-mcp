@@ -171,7 +171,13 @@ function formFields(html: string, criteria: SearchCriteria): URLSearchParams {
 
 function allowedOfficialUrl(value: string, base: URL): URL {
   const url = new URL(value, base)
-  if (url.protocol !== 'https:' || url.hostname !== 'judgment.judicial.gov.tw' || !url.pathname.startsWith('/FJUD/')) {
+  if (
+    url.origin !== base.origin ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    url.hash.length > 0 ||
+    !url.pathname.startsWith('/FJUD/')
+  ) {
     throw new JudicialSourceError('source_changed', base.href)
   }
   return url
@@ -183,6 +189,7 @@ function requestOptions(cookie?: string) {
     maxContentLength: REQUEST_LIMIT,
     maxBodyLength: REQUEST_LIMIT,
     maxRedirects: 0,
+    validateStatus: (status: number) => status >= 200 && status < 300,
     responseType: 'text' as const,
     headers: {
       'User-Agent': 'judicial-mcp/1.5 (https://github.com/jurislm/judicial-mcp)',
@@ -208,6 +215,12 @@ function sourceText(value: unknown, url: URL): string {
   return value
 }
 
+function visibleBodyText(html: string): string {
+  const $ = load(html)
+  $('script, style, noscript').remove()
+  return $('body').text()
+}
+
 function resultDate(text: string, caseId: string): string | null {
   const dateMatch = text.match(/(\d{2,4})[./年-](\d{1,2})[./月-](\d{1,2})/)
   const idMatch = caseId.split(',')[4]?.match(/^(\d{4})(\d{2})(\d{2})$/)
@@ -231,7 +244,7 @@ function resultDate(text: string, caseId: string): string | null {
 
 function caseIdFromLink(href: string, base: URL): string | undefined {
   const url = allowedOfficialUrl(href, base)
-  if (!url.pathname.endsWith('/data.aspx') || url.searchParams.get('ty') !== 'JD') return undefined
+  if (url.pathname !== '/FJUD/data.aspx' || url.searchParams.get('ty') !== 'JD') return undefined
   const caseId = url.searchParams.get('id')
   if (!caseId || !/^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8}(?:,\d+)?$/.test(caseId)) return undefined
   return caseId
@@ -239,7 +252,7 @@ function caseIdFromLink(href: string, base: URL): string | undefined {
 
 function parseResults(html: string, sourceUrl: URL, retrievedAt: string): JudgmentSearchResult[] {
   const $ = load(html)
-  const noResults = NO_RESULTS.test($('body').text())
+  const noResults = NO_RESULTS.test(visibleBodyText(html))
   const table = $('table#jud, table.jub-table').first()
   if (!table.length) {
     if (noResults) return []
@@ -297,9 +310,46 @@ function hasNextPage(html: string, page: number): boolean {
 
 function makeSearchResultUrl(iframeSource: string, page: number): URL {
   const url = allowedOfficialUrl(iframeSource, SEARCH_URL)
-  if (!url.pathname.endsWith('/qryresultlst.aspx')) throw new JudicialSourceError('source_changed', SEARCH_URL.href)
+  if (url.pathname !== '/FJUD/qryresultlst.aspx') throw new JudicialSourceError('source_changed', SEARCH_URL.href)
   if (page > 1) url.searchParams.set('page', String(page))
   return url
+}
+
+function makeSearchErrorPageUrl(iframeSource: string): URL | undefined {
+  const url = new URL(iframeSource, SEARCH_URL)
+  if (
+    url.origin !== SEARCH_URL.origin ||
+    url.pathname !== '/ErrorPage.aspx' ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    url.hash ||
+    url.href.length > 2_048
+  ) return undefined
+  const parameters = [...url.searchParams.entries()]
+  if (
+    parameters.length !== 2 ||
+    url.searchParams.getAll('frm').length !== 1 ||
+    url.searchParams.getAll('err').length !== 1 ||
+    !['FJUD', 'iframe'].includes(url.searchParams.get('frm') ?? '') ||
+    !/^[A-Za-z0-9_-]{1,64}$/.test(url.searchParams.get('err') ?? '')
+  ) return undefined
+  return url
+}
+
+function emptySearchResult(sourceUrl: URL, retrievedAt: string) {
+  return {
+    count: 0,
+    ambiguous: false,
+    results: [],
+    source_url: sourceUrl.href,
+    retrieved_at: retrievedAt,
+    cache: { status: 'not_cached' as const },
+    truncated: false,
+    partial: false,
+    next_page: null,
+    next_offset: null,
+    source_version: null,
+  }
 }
 
 function validCaseId(value: string): boolean {
@@ -342,22 +392,24 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
   const $ = load(queryHtml)
   const iframeSource = $('iframe').first().attr('src')
   if (!iframeSource) {
-    if (NO_RESULTS.test($('body').text())) {
-      return {
-        count: 0,
-        ambiguous: false,
-        results: [],
-        source_url: SEARCH_URL.href,
-        retrieved_at: retrievedAt,
-        cache: { status: 'not_cached' },
-        truncated: false,
-        partial: false,
-        next_page: null,
-        next_offset: null,
-        source_version: null,
-      }
+    if (NO_RESULTS.test(visibleBodyText(queryHtml))) {
+      return emptySearchResult(SEARCH_URL, retrievedAt)
     }
     throw new JudicialSourceError('source_changed', SEARCH_URL.href)
+  }
+  const errorPageUrl = makeSearchErrorPageUrl(iframeSource)
+  if (errorPageUrl) {
+    let errorPageResponse: AxiosResponse<string>
+    try {
+      errorPageResponse = await axios.get<string>(errorPageUrl.href, requestOptions())
+    } catch (error: unknown) {
+      upstreamFailure(error, errorPageUrl)
+    }
+    const errorPageHtml = sourceText(errorPageResponse.data, errorPageUrl)
+    if (!NO_RESULTS.test(visibleBodyText(errorPageHtml))) {
+      throw new JudicialSourceError('source_changed', errorPageUrl.href)
+    }
+    return emptySearchResult(errorPageUrl, retrievedAt)
   }
   const resultUrl = makeSearchResultUrl(iframeSource, criteria.page)
   let resultResponse: AxiosResponse<string>
@@ -405,7 +457,7 @@ export async function fetchJudgmentText(args: Record<string, unknown>): Promise<
   }
   const html = sourceText(response.data, url)
   const $ = load(html)
-  const noResults = NO_RESULTS.test($('body').text())
+  const noResults = NO_RESULTS.test(visibleBodyText(html))
   const judgment = $('#jud').first()
   if (!judgment.length) {
     throw new JudicialSourceError(noResults ? 'source_not_found' : 'source_changed', url.href)

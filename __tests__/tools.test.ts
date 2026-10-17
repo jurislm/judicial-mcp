@@ -1,9 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import axios from 'axios'
 import { TOOLS_CONFIG, TOOL_HANDLERS } from '../src/tools.js'
+import { queryRegulation } from '../src/regulation-source.js'
 
 vi.mock('axios')
+vi.mock('../src/regulation-source.js', () => ({ queryRegulation: vi.fn() }))
 const mockedAxios = vi.mocked(axios, true)
+const mockedQueryRegulation = vi.mocked(queryRegulation)
 
 describe('Tools 模組測試', () => {
   beforeEach(() => {
@@ -270,6 +273,43 @@ describe('Tools 模組測試', () => {
       delete process.env.JUDICIAL_PASSWORD
 
       await expect(TOOL_HANDLERS.member_token({})).rejects.toThrow('未提供使用者帳號或密碼')
+    })
+  })
+
+  describe('TOOL_HANDLERS.query_regulation', () => {
+    test('queries one sourced article without requiring a token', async () => {
+      const mockResult = {
+        status: 'current' as const,
+        regulation_name: '民法',
+        regulation_id: 'B0000001',
+        article_number: '1',
+        article_text: '條文內容',
+        version: {
+          amendment_date: '2026-01-01',
+          promulgation_date: '2026-01-01',
+          effective_date: '2026-01-01',
+          effective_status: 'as_stated' as const,
+        },
+        source_url: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+        search_source_url: 'https://law.moj.gov.tw/Law/LawSearchResult.aspx?kw=%E6%B0%91%E6%B3%95',
+        retrieved_at: '2026-10-16T00:00:00.000Z',
+        cache: { status: 'miss' as const },
+        truncated: false,
+        partial: false,
+        source_version: '2026-01-01',
+      }
+      mockedQueryRegulation.mockResolvedValueOnce(mockResult)
+
+      const result = await TOOL_HANDLERS.query_regulation({ lawName: '民法', articleNumber: '1' })
+
+      expect(result).toEqual(mockResult)
+      expect(mockedQueryRegulation).toHaveBeenCalledWith({ lawName: '民法', articleNumber: '1' })
+    })
+
+    test('rejects invalid options before querying the official source', async () => {
+      await expect(TOOL_HANDLERS.query_regulation({ lawName: '民法', articleNumber: '1', refresh: 'yes' }))
+        .rejects.toThrow('參數 refresh 必須是布林值')
+      expect(mockedQueryRegulation).not.toHaveBeenCalled()
     })
   })
 

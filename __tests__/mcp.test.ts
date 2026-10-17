@@ -39,7 +39,7 @@ function sendMessage(
 }
 
 describe('MCP 伺服器測試', () => {
-  test('stdio 啟動、列出 token-free 工具並安全處理搜尋驗證錯誤', async () => {
+  test('stdio 啟動、列出 token-free 工具並安全處理公開工具驗證錯誤', async () => {
     const child = spawn('bun', ['src/index.ts'], {
       cwd: process.cwd(),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -77,18 +77,23 @@ describe('MCP 伺服器測試', () => {
       const tools = listResult.tools.filter(isRecord)
       const searchTool = tools.find(tool => tool.name === 'search_judgments')
       const fetchTool = tools.find(tool => tool.name === 'fetch_judgment_text')
+      const regulationTool = tools.find(tool => tool.name === 'query_regulation')
       expect(searchTool).toBeDefined()
       expect(fetchTool).toBeDefined()
-      if (!isRecord(searchTool?.inputSchema) || !isRecord(fetchTool?.inputSchema)) {
+      expect(regulationTool).toBeDefined()
+      if (!isRecord(searchTool?.inputSchema) || !isRecord(fetchTool?.inputSchema) || !isRecord(regulationTool?.inputSchema)) {
         throw new Error('New MCP tools did not expose object input schemas')
       }
       expect(isRecord(searchTool.inputSchema.properties)).toBe(true)
       expect(isRecord(fetchTool.inputSchema.properties)).toBe(true)
-      if (!isRecord(searchTool.inputSchema.properties) || !isRecord(fetchTool.inputSchema.properties)) {
+      expect(isRecord(regulationTool.inputSchema.properties)).toBe(true)
+      if (!isRecord(searchTool.inputSchema.properties) || !isRecord(fetchTool.inputSchema.properties) || !isRecord(regulationTool.inputSchema.properties)) {
         throw new Error('New MCP tools did not expose input properties')
       }
       expect(searchTool.inputSchema.properties).not.toHaveProperty('token')
       expect(fetchTool.inputSchema.properties).not.toHaveProperty('token')
+      expect(regulationTool.inputSchema.properties).not.toHaveProperty('token')
+      expect(regulationTool.inputSchema.required).toEqual(['lawName', 'articleNumber'])
 
       sendMessage(child.stdin, {
         jsonrpc: '2.0',
@@ -102,6 +107,20 @@ describe('MCP 伺服器測試', () => {
       expect(called.result.isError).toBe(true)
       expect(called.result.content).toEqual([
         expect.objectContaining({ type: 'text', text: expect.stringContaining('至少需要提供 keyword') }),
+      ])
+
+      sendMessage(child.stdin, {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: { name: 'query_regulation', arguments: { lawName: '民法', articleNumber: '第一條' } },
+      })
+      const regulationCall = await readResponse(iterator, 4, () => stderrText)
+      expect(isRecord(regulationCall.result)).toBe(true)
+      if (!isRecord(regulationCall.result)) throw new Error(`Invalid tools/call response: ${JSON.stringify(regulationCall)}`)
+      expect(regulationCall.result.isError).toBe(true)
+      expect(regulationCall.result.content).toEqual([
+        expect.objectContaining({ type: 'text', text: expect.stringContaining('articleNumber 必須使用阿拉伯數字') }),
       ])
     } finally {
       lines.close()
