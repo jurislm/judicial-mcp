@@ -1,3 +1,5 @@
+import { JudicialSourceError } from './source-error.js'
+
 type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'resource'; resource: { uri: string; mimeType: string; blob: string } }
@@ -18,6 +20,24 @@ export const createSuccessResponse = (data: unknown): McpToolResult => ({
 })
 
 export const createErrorResponse = (error: unknown, message: string): McpToolResult => {
+  if (error instanceof JudicialSourceError) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: {
+              code: error.code,
+              message: error.message,
+              source_url: error.sourceUrl,
+              retrieved_at: error.retrievedAt,
+            },
+          }, null, 2),
+        },
+      ],
+      isError: true,
+    }
+  }
   const detail =
     error !== null && typeof error === 'object' && 'response' in error
       ? (error as { response?: { data?: unknown } }).response?.data

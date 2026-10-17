@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { createBlobResponse } from './response.js'
+import { fetchJudgmentText, searchJudgments } from './public-judgment-source.js'
+import { JudicialSourceError } from './source-error.js'
 
 // ─── Arg interfaces ──────────────────────────────────────────────────────────
 
@@ -7,6 +9,16 @@ export interface TokenArgs { token: string }
 export interface GetJudgmentArgs { token: string; jid: string }
 export interface ListResourcesArgs { categoryNo: string; token: string }
 export interface DownloadFileArgs { fileSetId: string; token: string; top?: number; skip?: number }
+export interface SearchJudgmentsArgs extends Record<string, unknown> {
+  keyword?: string
+  court?: string
+  year?: number
+  caseNumber?: string
+  limit?: number
+  page?: number
+  offset?: number
+}
+export interface FetchJudgmentTextArgs extends Record<string, unknown> { caseId: string }
 
 // ─── Input validation ────────────────────────────────────────────────────────
 
@@ -23,6 +35,46 @@ const validateInput = {
       throw new Error('無效的授權 Token')
     }
   },
+}
+
+function optionalStringArgument(params: Record<string, unknown>, key: string): string | undefined {
+  const value = params[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new Error(`參數 ${key} 必須是文字`)
+  return value
+}
+
+function optionalNumberArgument(params: Record<string, unknown>, key: string): number | undefined {
+  const value = params[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'number') throw new Error(`參數 ${key} 必須是數字`)
+  return value
+}
+
+function searchJudgmentsArgs(params: Record<string, unknown>): SearchJudgmentsArgs {
+  const args: SearchJudgmentsArgs = {}
+  const keyword = optionalStringArgument(params, 'keyword')
+  const court = optionalStringArgument(params, 'court')
+  const year = optionalNumberArgument(params, 'year')
+  const caseNumber = optionalStringArgument(params, 'caseNumber')
+  const limit = optionalNumberArgument(params, 'limit')
+  const page = optionalNumberArgument(params, 'page')
+  const offset = optionalNumberArgument(params, 'offset')
+  if (keyword !== undefined) args.keyword = keyword
+  if (court !== undefined) args.court = court
+  if (year !== undefined) args.year = year
+  if (caseNumber !== undefined) args.caseNumber = caseNumber
+  if (limit !== undefined) args.limit = limit
+  if (page !== undefined) args.page = page
+  if (offset !== undefined) args.offset = offset
+  return args
+}
+
+function fetchJudgmentTextArgs(params: Record<string, unknown>): FetchJudgmentTextArgs {
+  validateInput.required(params, ['caseId'])
+  const caseId = params.caseId
+  if (typeof caseId !== 'string') throw new Error('參數 caseId 必須是文字')
+  return { caseId }
 }
 
 // ─── Error helper ────────────────────────────────────────────────────────────
@@ -135,6 +187,37 @@ export const TOOLS_CONFIG = {
     inputSchema: {
       type: 'object',
       properties: {},
+      additionalProperties: false,
+    },
+  },
+
+  search_judgments: {
+    name: 'search_judgments',
+    description: '透過司法院公開裁判書查詢頁搜尋裁判，不需要授權 Token。year 可使用西元或民國年；完整案號可同時指定案類。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: '裁判全文關鍵字，最多 128 字元' },
+        court: { type: 'string', description: '司法院法院名稱或官方法院代碼' },
+        year: { type: 'integer', description: '裁判年度，可使用西元或民國年', minimum: 1, maximum: 9999 },
+        caseNumber: { type: 'string', description: '案號數字，或「年度案類字第號」格式' },
+        limit: { type: 'integer', description: '每頁最多回傳筆數，預設 5，上限 10', minimum: 1, maximum: 10 },
+        page: { type: 'integer', description: '官方結果頁頁碼，預設 1，上限 50', minimum: 1, maximum: 50 },
+        offset: { type: 'integer', description: '官方結果頁內的起始位置，預設 0，範圍 0–19；依回傳的 next_page 與 next_offset 繼續查詢', minimum: 0, maximum: 19 },
+      },
+      additionalProperties: false,
+    },
+  },
+
+  fetch_judgment_text: {
+    name: 'fetch_judgment_text',
+    description: '依 search_judgments 回傳的 case_id 取得司法院公開裁判全文，不需要授權 Token。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        caseId: { type: 'string', description: 'search_judgments 回傳的 case_id' },
+      },
+      required: ['caseId'],
       additionalProperties: false,
     },
   },
@@ -253,6 +336,24 @@ export const TOOL_HANDLERS: Record<string, (_args: Record<string, unknown>) => P
       return result.data
     } catch (error: unknown) {
       throw new Error(`會員授權失敗: ${apiErrorMessage(error)}`)
+    }
+  },
+
+  async search_judgments(args) {
+    try {
+      return await searchJudgments(searchJudgmentsArgs(args))
+    } catch (error: unknown) {
+      if (error instanceof JudicialSourceError) throw error
+      throw new Error(`搜尋裁判書失敗: ${apiErrorMessage(error)}`)
+    }
+  },
+
+  async fetch_judgment_text(args) {
+    try {
+      return await fetchJudgmentText(fetchJudgmentTextArgs(args))
+    } catch (error: unknown) {
+      if (error instanceof JudicialSourceError) throw error
+      throw new Error(`取得裁判全文失敗: ${apiErrorMessage(error)}`)
     }
   },
 }
