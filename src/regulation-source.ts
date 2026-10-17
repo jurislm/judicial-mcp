@@ -294,8 +294,23 @@ function regulationMetadataText(pageText: string): string {
   return firstArticle < 0 ? pageText : pageText.slice(0, firstArticle)
 }
 
+function articleHeading(block: ArticleBlock): string {
+  const heading = block.find('.col-no, .law-reg-no, .article-number').first()
+  const html = heading.html()
+  if (html !== null) {
+    const $heading = load(`<div>${html}</div>`)
+    let linkedHeading: string | undefined
+    $heading('a').each((_, anchor) => {
+      const text = $heading(anchor).text().trim()
+      if (!linkedHeading && /^第\s*\d+(?:-\d+)?\s*條$/.test(text)) linkedHeading = text
+    })
+    if (linkedHeading) return linkedHeading
+  }
+  return heading.text().trim()
+}
+
 function articleBlockText(block: ArticleBlock, articleNumber: string): string | undefined {
-  const heading = block.find('.col-no, .law-reg-no, .article-number').first().text().trim()
+  const heading = articleHeading(block)
   if (!heading || !new RegExp(`^第\\s*${articleNumber.replace('-', '\\-')}\\s*條`).test(heading)) return undefined
   const content = block.find('.col-data, .law-reg-content-text, .article-content').first()
   if (!content.length) return undefined
@@ -305,7 +320,7 @@ function articleBlockText(block: ArticleBlock, articleNumber: string): string | 
 }
 
 function isArticleBlock(block: ArticleBlock): boolean {
-  const heading = block.find('.col-no, .law-reg-no, .article-number').first().text().trim()
+  const heading = articleHeading(block)
   const content = block.find('.col-data, .law-reg-content-text, .article-content').first()
   return /^第\s*\d+(?:-\d+)?\s*條/.test(heading) && content.length > 0 && content.text().trim().length > 0
 }

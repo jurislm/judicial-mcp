@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import axios from 'axios'
+import { readFileSync } from 'node:fs'
 import { dispatchTool } from '../src/server.js'
 import { TOOLS_CONFIG } from '../src/tools.js'
 import { createErrorResponse } from '../src/response.js'
@@ -49,6 +50,8 @@ const resultPage = `
     <tr class="summary"><td colspan="4"><span class="tdCut">判決摘要</span></td></tr>
   </table>
 `
+
+const officialNoResultPage = readFileSync(new URL('./fixtures/judgment-no-results.html', import.meta.url), 'utf8')
 
 function toolData(result: Awaited<ReturnType<typeof dispatchTool>>): Record<string, unknown> {
   const content = result.content[0]
@@ -250,9 +253,17 @@ describe('judgment search and text tools', () => {
     expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
-  test('returns an explicit empty result only when the official page says there are no matches', async () => {
-    mockedAxios.get.mockResolvedValueOnce({ data: searchForm, headers: {} })
-    mockedAxios.post.mockResolvedValueOnce({ data: '<div>查無符合條件的裁判書資料</div>', headers: {} })
+  test.each([
+    ['iframe', 'Q003'],
+    ['FJUD', 'not-found'],
+  ])('returns an explicit empty result only when the official page says there are no matches ($0)', async (frame, error) => {
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: officialNoResultPage, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: `<iframe src="../ErrorPage.aspx?frm=${frame}&amp;err=${error}"></iframe>`,
+      headers: {},
+    })
 
     const data = toolData(await dispatchTool('search_judgments', { keyword: '不存在的查詢詞' }))
 
@@ -264,9 +275,46 @@ describe('judgment search and text tools', () => {
       partial: false,
       source_version: null,
       cache: { status: 'not_cached' },
-      source_url: 'https://judgment.judicial.gov.tw/FJUD/Default_AD.aspx',
+      source_url: `https://judgment.judicial.gov.tw/ErrorPage.aspx?frm=${frame}&err=${error}`,
       retrieved_at: expect.any(String),
     })
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      2,
+      `https://judgment.judicial.gov.tw/ErrorPage.aspx?frm=${frame}&err=${error}`,
+      expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
+    )
+    const errorPageOptions = mockedAxios.get.mock.calls[1]?.[1]
+    if (!errorPageOptions || !('headers' in errorPageOptions)) throw new Error('Expected official error-page request options')
+    expect(errorPageOptions.headers).not.toHaveProperty('Cookie')
+  })
+
+  test('does not treat an unrecognized official error page as an empty result', async () => {
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: '<html><body>系統訊息<script>const message = "查無資料"</script></body></html>', headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="../ErrorPage.aspx?frm=FJUD&amp;err=unknown"></iframe>',
+      headers: {},
+    })
+
+    await expect(dispatchTool('search_judgments', { keyword: '查無資料' })).rejects.toMatchObject({
+      name: 'JudicialSourceError',
+      code: 'source_changed',
+    })
+  })
+
+  test('does not follow an off-site error iframe from the official search form', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: searchForm, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="https://example.com/ErrorPage.aspx?frm=FJUD&amp;err=not-found"></iframe>',
+      headers: {},
+    })
+
+    await expect(dispatchTool('search_judgments', { keyword: '不存在的查詢詞' })).rejects.toMatchObject({
+      name: 'JudicialSourceError',
+      code: 'source_changed',
+    })
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1)
   })
 
   test('fetches the full public judgment by case ID and marks output truncation', async () => {

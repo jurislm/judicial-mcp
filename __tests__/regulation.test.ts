@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import axios from 'axios'
+import { readFileSync } from 'node:fs'
 import { dispatchTool } from '../src/server.js'
 import { TOOLS_CONFIG } from '../src/tools.js'
 import { clearRegulationCache } from '../src/regulation-cache.js'
@@ -50,6 +51,8 @@ const lawArticle = `
     <div class="law-article"><div class="line-0000">民事所適用之習慣，以不背於公共秩序或善良風俗者為限。</div></div>
   </main>
 `
+
+const criminalCodeArticle = readFileSync(new URL('./fixtures/regulation-criminal-code-attachment.html', import.meta.url), 'utf8')
 
 function firecrawlResponse(rawHtml: string, sourceURL = 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001') {
   return { success: true, data: { rawHtml, metadata: { sourceURL } } }
@@ -249,6 +252,30 @@ describe('query_regulation', () => {
 
     const data = textData(await dispatchTool('query_regulation', { lawName: '廢棄物清理法', articleNumber: '1' }))
     expect(data).toMatchObject({ status: 'current', regulation_name: '廢棄物清理法', regulation_id: 'B0000002' })
+  })
+
+  test('reads the criminal code article when another official row has an attachment accessibility label', async () => {
+    mockedAxios.post
+      .mockResolvedValueOnce({ data: '[{"PCODE":"C0000001","TERM":"中華民國刑法"}]', headers: {} })
+      .mockResolvedValueOnce({
+        data: firecrawlResponse(criminalCodeArticle, 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=C0000001'),
+        headers: {},
+      })
+
+    const data = textData(await dispatchTool('query_regulation', {
+      lawName: '中華民國刑法',
+      articleNumber: '1',
+    }))
+
+    expect(data).toMatchObject({
+      status: 'current',
+      regulation_name: '中華民國刑法',
+      regulation_id: 'C0000001',
+      article_number: '1',
+      source_url: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=C0000001',
+      truncated: false,
+    })
+    expect(data.article_text).toBe('行為之處罰，以行為時之法律有明文規定者為限。')
   })
 
   test('returns a cache hit without another upstream request until refresh is requested', async () => {
