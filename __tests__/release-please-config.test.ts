@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -28,11 +27,11 @@ describe('release-please exclude-paths', () => {
     expect(conflicts).toEqual([])
   })
 
-  it('lists only canonical existing subdirectories, because release-please matches exclude-paths by literal directory prefix', () => {
+  it('lists only canonical subdirectories that hold tracked files, because release-please matches changed paths by literal directory prefix', () => {
+    const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: fileURLToPath(root), encoding: 'utf8' }).split('\0')
     const invalid = excludePaths.filter((path) => {
       const canonical = path.split('/').every((segment) => /^[\w.-]+$/.test(segment) && !/^\.\.?$/.test(segment))
-      const dir = join(fileURLToPath(root), path)
-      return !canonical || !existsSync(dir) || !statSync(dir).isDirectory()
+      return !canonical || !trackedFiles.some((file) => file.startsWith(`${path}/`))
     })
     expect(invalid).toEqual([])
   })
