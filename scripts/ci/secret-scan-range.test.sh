@@ -44,7 +44,7 @@ expect() {
 }
 
 expect_exit() {
-  [ "$2" = "EXIT_NONZERO" ] && echo "ok: $1" || { echo "FAIL: ${1}：應失敗"; fail=1; }
+  if [ "$2" = "EXIT_NONZERO" ]; then echo "ok: $1"; else echo "FAIL: ${1}：應失敗"; fail=1; fi
 }
 
 s=$(scan_set push refs/heads/main "$c1" "$c2" "$c0")
@@ -61,6 +61,9 @@ expect "main：上次成功不是祖先時，掃整段歷史" "$s" "$c0 $c1 $c2"
 
 s=$(scan_set push refs/heads/feature "2222222222222222222222222222222222222222" "$f1" "$o1")
 expect "非 main 被強推：改掃 origin/main..sha" "$s" "$f1" "$c2"
+
+s=$(scan_set push refs/heads/feature "$c2" "$f1" "$c1")
+expect "非 main：上一次掃描被取消時，涵蓋上次成功之後所有 commit" "$s" "$c2 $f1" "$c1"
 
 s=$(scan_set push refs/heads/feature "$zero" "$f1" "")
 expect "新分支：退回 -n 100" "$s" "$f1 $c0"
