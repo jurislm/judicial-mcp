@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.6.0](https://github.com/jurislm/judicial-mcp/compare/v1.5.0...v1.6.0) (2026-10-17)
+
+
+### Features
+
+* add sourced judgment search and full-text retrieval ([eeac0cf](https://github.com/jurislm/judicial-mcp/commit/eeac0cf154e8cf2951f5b18fb09a65a9bb759cb9))
+* add sourced judgment search and full-text retrieval (JUR-733) ([95c6dfa](https://github.com/jurislm/judicial-mcp/commit/95c6dfa8c15b5130c928f27b07e8bdc72e8c0311))
+* add sourced regulation article lookup ([8294bec](https://github.com/jurislm/judicial-mcp/commit/8294bec5afc15de0cd179efca4cc6dab36bf0acd))
+* add sourced regulation article lookup (JUR-735) ([9e416ed](https://github.com/jurislm/judicial-mcp/commit/9e416edc13e3e7981b0c84961848d1cbe41400fd))
+* route law page scraping through Firecrawl ([141594b](https://github.com/jurislm/judicial-mcp/commit/141594b1f15e61f91f388d58541443c23cb0d1ce))
+
+
+### Bug Fixes
+
+* confirm missing articles from official structure ([051ec88](https://github.com/jurislm/judicial-mcp/commit/051ec8883849bf504b7459ddc77f286728a8e916))
+* constrain official source boundaries ([0d25062](https://github.com/jurislm/judicial-mcp/commit/0d25062b388ed92979e2ab10f9dede9b7c875dd6))
+* handle official source page variants ([83ea310](https://github.com/jurislm/judicial-mcp/commit/83ea310a193305762b5e3acc9dff35d59a7c4fff))
+* parse current official law lookup pages ([41225eb](https://github.com/jurislm/judicial-mcp/commit/41225ebcccd696818adb48128185917b05ff9f60))
+* preserve complete Bun lockfile ([028d16a](https://github.com/jurislm/judicial-mcp/commit/028d16a09a4ffafc363d81256d0523771228b222))
+* preserve judgment search limits and validate inputs ([ab3f829](https://github.com/jurislm/judicial-mcp/commit/ab3f829e29b3a2e111ef0a5ac0e037bf17c78574))
+* preserve judgment search pagination and legacy IDs ([63c23de](https://github.com/jurislm/judicial-mcp/commit/63c23de2a1f2d66fa219b47f8f19b70de004efbf))
+* reject empty law article structures ([a1625a8](https://github.com/jurislm/judicial-mcp/commit/a1625a81b2cd357a0eb7b59dfbb43f833ac27cb6))
+
+
+### Documentation
+
+* document judgment search and verify stdio contract ([8c4e3a8](https://github.com/jurislm/judicial-mcp/commit/8c4e3a88393585bb77af26312918e39f8f31d7cb))
+
 ## [1.5.0](https://github.com/jurislm/judicial-mcp/compare/v1.4.0...v1.5.0) (2026-06-24)
 
 
