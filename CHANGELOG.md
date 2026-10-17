@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.2](https://github.com/jurislm/judicial-mcp/compare/v1.6.1...v1.6.2) (2026-10-17)
+
+
+### Tests
+
+* release PR base 落後時應自動 update branch 再合併、等 check 拉長（JUR-768） ([c0644c7](https://github.com/jurislm/judicial-mcp/commit/c0644c7990d8c63ef7f8f558b5b15e435977f1f9))
+
 ## [1.6.1](https://github.com/jurislm/judicial-mcp/compare/v1.6.0...v1.6.1) (2026-10-17)
 
 
