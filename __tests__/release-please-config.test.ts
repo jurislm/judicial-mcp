@@ -27,10 +27,11 @@ describe('release-please exclude-paths', () => {
     expect(conflicts).toEqual([])
   })
 
-  it('lists only existing subdirectories, because release-please matches exclude-paths by directory prefix', () => {
+  it('lists only canonical existing subdirectories, because release-please matches exclude-paths by literal directory prefix', () => {
     const invalid = excludePaths.filter((path) => {
+      const noncanonical = path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
       const url = new URL(path, root)
-      return path === '.' || !existsSync(url) || !statSync(url).isDirectory()
+      return noncanonical || !existsSync(url) || !statSync(url).isDirectory()
     })
     expect(invalid).toEqual([])
   })
