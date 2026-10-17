@@ -101,7 +101,7 @@ function validateArticleNumber(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{1,5}(?:-\d{1,5})?$/.test(value.trim())) {
     throw new Error('articleNumber 必須使用阿拉伯數字，可含連字號，例如 1 或 1-1')
   }
-  return value.trim().replace(/^0+(?=\d)/, '')
+  return value.trim().split('-').map(part => part.replace(/^0+(?=\d)/, '')).join('-')
 }
 
 function validateRefresh(value: unknown): boolean {
@@ -177,6 +177,7 @@ function firecrawlRequestOptions(apiKey?: string) {
     maxContentLength: RESPONSE_LIMIT,
     maxBodyLength: RESPONSE_LIMIT,
     maxRedirects: 0,
+    validateStatus: (status: number) => status >= 200 && status < 300,
     headers,
   }
 }
@@ -213,7 +214,19 @@ function responseHtml(payload: unknown, url: URL): string {
   } catch {
     throw new RegulationSourceError('source_changed', url.href)
   }
-  if (resolvedUrl.protocol !== 'https:' || resolvedUrl.hostname !== 'law.moj.gov.tw') {
+  const requestedPcode = url.searchParams.get('pcode')
+  const sourceParameters = [...resolvedUrl.searchParams.entries()]
+  if (
+    resolvedUrl.origin !== url.origin ||
+    resolvedUrl.username.length > 0 ||
+    resolvedUrl.password.length > 0 ||
+    resolvedUrl.pathname !== url.pathname ||
+    resolvedUrl.hash.length > 0 ||
+    requestedPcode === null ||
+    sourceParameters.length !== 1 ||
+    resolvedUrl.searchParams.getAll('pcode').length !== 1 ||
+    resolvedUrl.searchParams.get('pcode') !== requestedPcode
+  ) {
     throw new RegulationSourceError('source_changed', url.href)
   }
   return payload.data.rawHtml

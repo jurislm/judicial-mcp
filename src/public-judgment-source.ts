@@ -171,7 +171,13 @@ function formFields(html: string, criteria: SearchCriteria): URLSearchParams {
 
 function allowedOfficialUrl(value: string, base: URL): URL {
   const url = new URL(value, base)
-  if (url.protocol !== 'https:' || url.hostname !== 'judgment.judicial.gov.tw' || !url.pathname.startsWith('/FJUD/')) {
+  if (
+    url.origin !== base.origin ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    url.hash.length > 0 ||
+    !url.pathname.startsWith('/FJUD/')
+  ) {
     throw new JudicialSourceError('source_changed', base.href)
   }
   return url
@@ -183,6 +189,7 @@ function requestOptions(cookie?: string) {
     maxContentLength: REQUEST_LIMIT,
     maxBodyLength: REQUEST_LIMIT,
     maxRedirects: 0,
+    validateStatus: (status: number) => status >= 200 && status < 300,
     responseType: 'text' as const,
     headers: {
       'User-Agent': 'judicial-mcp/1.5 (https://github.com/jurislm/judicial-mcp)',
@@ -237,7 +244,7 @@ function resultDate(text: string, caseId: string): string | null {
 
 function caseIdFromLink(href: string, base: URL): string | undefined {
   const url = allowedOfficialUrl(href, base)
-  if (!url.pathname.endsWith('/data.aspx') || url.searchParams.get('ty') !== 'JD') return undefined
+  if (url.pathname !== '/FJUD/data.aspx' || url.searchParams.get('ty') !== 'JD') return undefined
   const caseId = url.searchParams.get('id')
   if (!caseId || !/^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8}(?:,\d+)?$/.test(caseId)) return undefined
   return caseId
@@ -303,7 +310,7 @@ function hasNextPage(html: string, page: number): boolean {
 
 function makeSearchResultUrl(iframeSource: string, page: number): URL {
   const url = allowedOfficialUrl(iframeSource, SEARCH_URL)
-  if (!url.pathname.endsWith('/qryresultlst.aspx')) throw new JudicialSourceError('source_changed', SEARCH_URL.href)
+  if (url.pathname !== '/FJUD/qryresultlst.aspx') throw new JudicialSourceError('source_changed', SEARCH_URL.href)
   if (page > 1) url.searchParams.set('page', String(page))
   return url
 }
@@ -313,6 +320,8 @@ function makeSearchErrorPageUrl(iframeSource: string): URL | undefined {
   if (
     url.origin !== SEARCH_URL.origin ||
     url.pathname !== '/ErrorPage.aspx' ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
     url.hash ||
     url.href.length > 2_048
   ) return undefined

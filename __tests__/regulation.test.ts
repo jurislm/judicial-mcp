@@ -71,10 +71,11 @@ function textData(result: Awaited<ReturnType<typeof dispatchTool>>): Record<stri
 function queueLawResponse(
   termPayload = lawSearch,
   articleHtml = lawArticle,
+  sourceURL = 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
 ): void {
   mockedAxios.post
     .mockResolvedValueOnce({ data: termPayload, headers: {} })
-    .mockResolvedValueOnce({ data: firecrawlResponse(articleHtml), headers: {} })
+    .mockResolvedValueOnce({ data: firecrawlResponse(articleHtml, sourceURL), headers: {} })
 }
 
 beforeEach(() => {
@@ -116,7 +117,7 @@ describe('query_regulation', () => {
       1,
       'https://law.moj.gov.tw/controls/GetTermList.ashx?term=%E6%B0%91%E6%B3%95&type=ONEBAR',
       'term=%E6%B0%91%E6%B3%95&type=ONEBAR',
-      expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
     )
     expect(mockedAxios.post).toHaveBeenNthCalledWith(
       2,
@@ -126,7 +127,7 @@ describe('query_regulation', () => {
         formats: ['rawHtml'],
         onlyMainContent: false,
       }),
-      expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
     )
     expect(mockedAxios.get).not.toHaveBeenCalled()
     expect(data).toMatchObject({
@@ -184,9 +185,40 @@ describe('query_regulation', () => {
     expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
+  test('does not follow a redirect from the official autocomplete endpoint', async () => {
+    mockedAxios.post.mockRejectedValueOnce({ response: { status: 302 } })
+
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
+      code: 'source_unavailable',
+    })
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      'https://law.moj.gov.tw/controls/GetTermList.ashx?term=%E6%B0%91%E6%B3%95&type=ONEBAR',
+      'term=%E6%B0%91%E6%B3%95&type=ONEBAR',
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function) }),
+    )
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+  })
+
   test('rejects Firecrawl HTML that does not identify an official law database URL', async () => {
     mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
     mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(lawArticle, 'https://example.com/other'), headers: {} })
+
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
+      code: 'source_changed',
+      sourceUrl: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+    })
+    expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000002',
+    'https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=B0000001',
+    'https://law.moj.gov.tw:8443/LawClass/LawAll.aspx?pcode=B0000001',
+    'https://law.moj.gov.tw.evil.example/LawClass/LawAll.aspx?pcode=B0000001',
+    'https://user@law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+  ])('rejects a Firecrawl final URL outside the exact requested law page (%s)', async sourceURL => {
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(lawArticle, sourceURL), headers: {} })
 
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'source_changed',
@@ -229,7 +261,10 @@ describe('query_regulation', () => {
     const term = JSON.stringify([{ PCODE: 'A0030110', TERM: lawName }])
     const abolished = `<main id="content"><h1>${lawName}</h1><div>法規名稱：廢 ${lawName}</div><div>廢止日期：民國 95 年 02 月 05 日</div></main>`
     mockedAxios.post.mockResolvedValueOnce({ data: term, headers: {} })
-    mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(abolished), headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: firecrawlResponse(abolished, 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=A0030110'),
+      headers: {},
+    })
 
     let failure: unknown
     try {
@@ -248,7 +283,7 @@ describe('query_regulation', () => {
   test('does not mistake an active law beginning with 廢棄 for an abolished law', async () => {
     const search = '[{"PCODE":"B0000002","TERM":"廢棄物清理法"}]'
     const article = lawArticle.replaceAll('民法', '廢棄物清理法')
-    queueLawResponse(search, article)
+    queueLawResponse(search, article, 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000002')
 
     const data = textData(await dispatchTool('query_regulation', { lawName: '廢棄物清理法', articleNumber: '1' }))
     expect(data).toMatchObject({ status: 'current', regulation_name: '廢棄物清理法', regulation_id: 'B0000002' })
@@ -276,6 +311,26 @@ describe('query_regulation', () => {
       truncated: false,
     })
     expect(data.article_text).toBe('行為之處罰，以行為時之法律有明文規定者為限。')
+  })
+
+  test('normalizes zero-padded components of a hyphenated article number', async () => {
+    const subArticle = lawArticle.replace('第 1 條', '第 1-1 條')
+    mockedAxios.post
+      .mockResolvedValueOnce({ data: lawSearch, headers: {} })
+      .mockResolvedValueOnce({ data: firecrawlResponse(subArticle), headers: {} })
+
+    const data = textData(await dispatchTool('query_regulation', {
+      lawName: '民法',
+      articleNumber: '001-001',
+    }))
+
+    expect(data).toMatchObject({
+      status: 'current',
+      regulation_name: '民法',
+      regulation_id: 'B0000001',
+      article_number: '1-1',
+      article_text: '民事，法律所未規定者，依習慣；\n無習慣者，依法理。',
+    })
   })
 
   test('returns a cache hit without another upstream request until refresh is requested', async () => {

@@ -104,12 +104,17 @@ describe('judgment search and text tools', () => {
     expect(mockedAxios.get).toHaveBeenNthCalledWith(
       1,
       'https://judgment.judicial.gov.tw/FJUD/Default_AD.aspx',
-      expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
+    )
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      2,
+      'https://judgment.judicial.gov.tw/FJUD/qryresultlst.aspx?sys=V&judtype=JUDBOOK',
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
     )
     expect(mockedAxios.post).toHaveBeenCalledWith(
       'https://judgment.judicial.gov.tw/FJUD/Default_AD.aspx',
       expect.any(URLSearchParams),
-      expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
     )
     const body = mockedAxios.post.mock.calls[0]?.[1]
     if (!(body instanceof URLSearchParams)) throw new Error('Expected form data')
@@ -167,6 +172,59 @@ describe('judgment search and text tools', () => {
     expect(secondResults.map(result => isRecord(result) ? result.case_id : undefined)).toEqual(
       Array.from({ length: 10 }, (_, index) => `TPDV,113,訴,${index + 11},20240401,1`),
     )
+  })
+
+  test('rejects a result iframe that changes the official origin port', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: searchForm, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="https://judgment.judicial.gov.tw:8443/FJUD/qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>',
+      headers: {},
+    })
+
+    await expect(dispatchTool('search_judgments', { keyword: '資料保護' })).rejects.toMatchObject({
+      name: 'JudicialSourceError',
+      code: 'source_changed',
+    })
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not follow an off-site redirect from the official search form', async () => {
+    mockedAxios.get.mockRejectedValueOnce({ response: { status: 302 } })
+
+    await expect(dispatchTool('search_judgments', { keyword: '資料保護' })).rejects.toMatchObject({
+      name: 'JudicialSourceError',
+      code: 'source_unavailable',
+    })
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://judgment.judicial.gov.tw/FJUD/Default_AD.aspx',
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function) }),
+    )
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1)
+  })
+
+  test('rejects an off-site judgment link in the official results table', async () => {
+    const externalResultPage = resultPage.replace(
+      'href="data.aspx?ty=JD&amp;id=',
+      'href="https://example.com/FJUD/data.aspx?ty=JD&amp;id=',
+    )
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: externalResultPage, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({
+      data: '<iframe src="qryresultlst.aspx?sys=V&amp;judtype=JUDBOOK"></iframe>',
+      headers: {},
+    })
+
+    await expect(dispatchTool('search_judgments', { caseNumber: '1234' })).rejects.toMatchObject({
+      name: 'JudicialSourceError',
+      code: 'source_changed',
+    })
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      2,
+      'https://judgment.judicial.gov.tw/FJUD/qryresultlst.aspx?sys=V&judtype=JUDBOOK',
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
+    )
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
   })
 
   test('accepts five-part legacy judgment IDs from search results and full-text retrieval', async () => {
@@ -329,7 +387,7 @@ describe('judgment search and text tools', () => {
 
     expect(mockedAxios.get).toHaveBeenCalledWith(
       'https://judgment.judicial.gov.tw/FJUD/data.aspx?ty=JD&id=TPDV%2C113%2C%E8%A8%B4%2C1234%2C20240401%2C1',
-      expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
+      expect.objectContaining({ maxRedirects: 0, validateStatus: expect.any(Function), timeout: expect.any(Number) }),
     )
     expect(data).toMatchObject({
       case_id: 'TPDV,113,訴,1234,20240401,1',
