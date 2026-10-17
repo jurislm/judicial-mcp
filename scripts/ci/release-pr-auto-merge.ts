@@ -15,7 +15,8 @@ const RELEASE_TITLE = /^chore\(main\): release ((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.
 export const RELEASE_FILES = ['.release-please-manifest.json', 'CHANGELOG.md', 'package.json'] as const
 export const REQUIRED_CHECK_RUNS = ['lint', 'test', 'secret-scan'] as const
 const GITHUB_API = 'https://api.github.com'
-const DEFAULT_ATTEMPTS = 36
+// 120 × 5 秒 = 10 分鐘：涵蓋 update branch 後 GitHub Actions 重跑 lint／test／secret-scan 的排隊時間。
+const DEFAULT_ATTEMPTS = 120
 const DEFAULT_POLL_DELAY_MS = 5_000
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 
@@ -317,7 +318,7 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
   }
 
   const detailValue = await githubRequest(`/repos/${REPOSITORY}/pulls/${candidate.number}`)
-  const detail = selectReleaseCandidate([detailValue])
+  let detail = selectReleaseCandidate([detailValue])
   if (!detail || detail.headSha !== candidate.headSha || detail.baseSha !== candidate.baseSha) {
     throw new Error('release PR changed before content validation')
   }
@@ -333,9 +334,34 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
       logger.log(`Release PR #${detail.number} is based on a newer build; yielding to ${detail.baseSha}.`)
       return { status: 'no-op' }
     }
-    throw new Error(
-      `release PR base SHA does not match CI commit (pr=${detail.baseSha}, ci=${expectedBaseSha}, relation=${relation})`,
-    )
+    if (relation !== 'behind') {
+      throw new Error(
+        `release PR base SHA does not match CI commit (pr=${detail.baseSha}, ci=${expectedBaseSha}, relation=${relation})`,
+      )
+    }
+    // release-please 回報 "PR remained the same" 時不會推 release 分支，PR base 就停在舊的 main。
+    logger.log(`Release PR #${detail.number} base is behind ${expectedBaseSha}; updating its branch.`)
+    await githubRequest(`/repos/${REPOSITORY}/pulls/${detail.number}/update-branch`, {
+      method: 'PUT',
+      body: JSON.stringify({ expected_head_sha: detail.headSha }),
+    })
+    const previousHeadSha = detail.headSha
+    let updated: ReleaseCandidate | null = null
+    for (let attempt = 1; attempt <= maxAttempts && !updated; attempt += 1) {
+      if (attempt > 1) await sleep(pollDelayMs)
+      const current = selectReleaseCandidate([await githubRequest(`/repos/${REPOSITORY}/pulls/${detail.number}`)])
+      if (!current || current.number !== detail.number) throw new Error('release PR changed during branch update')
+      if (current.headSha !== previousHeadSha) updated = current
+    }
+    if (!updated) throw new Error('release PR branch update did not produce a new head')
+    if (updated.baseSha !== expectedBaseSha) {
+      if ((await mainSha()) !== expectedBaseSha) {
+        logger.log('main advanced during branch update; yielding to newer build.')
+        return { status: 'no-op' }
+      }
+      throw new Error(`release PR base SHA does not match CI commit after branch update (pr=${updated.baseSha})`)
+    }
+    detail = updated
   }
 
   const changedFiles = await githubRequest(`/repos/${REPOSITORY}/pulls/${detail.number}/files?per_page=100`)
