@@ -8,7 +8,7 @@ export type RegulationSourceErrorCode =
   | 'regulation_article_not_found'
 
 const REGULATION_ERROR_MESSAGES: Record<RegulationSourceErrorCode, string> = {
-  source_unavailable: '法務部全國法規資料庫暫時無法使用',
+  source_unavailable: '法規查詢服務或法務部全國法規資料庫暫時無法使用',
   source_changed: '法務部全國法規資料庫來源格式無法辨識',
   regulation_not_found: '官方來源查無指定法規',
   regulation_abolished: '指定法規已廢止，未回傳現行條文',

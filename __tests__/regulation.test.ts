@@ -30,19 +30,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const lawSearch = '[{"PCODE":"B0000001","TERM":"民法"}]'
 
-const officialLawSearchResults = `
-  <table class="table-hover tab-list tab-result">
-    <tr>
-      <td>1.</td>
-      <td><a href="../Hot/AddHotLaw.ashx?pcode=B0000001&amp;cur=Ld&amp;kw=%E6%B0%91%E6%B3%95">民法</a></td>
-      <td>
-        <a href="../ENG/LawClass/LawAll.aspx?pcode=B0000001">EN</a>
-        <a href="../LawClass/LawAll.aspx?PCODE=B0000001">本法規有附件</a>
-      </td>
-    </tr>
-  </table>
-`
-
 const lawArticle = `
   <main id="content">
     <h1>民法</h1>
@@ -64,6 +51,10 @@ const lawArticle = `
   </main>
 `
 
+function firecrawlResponse(rawHtml: string, sourceURL = 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001') {
+  return { success: true, data: { rawHtml, metadata: { sourceURL } } }
+}
+
 function textData(result: Awaited<ReturnType<typeof dispatchTool>>): Record<string, unknown> {
   const content = result.content[0]
   if (content?.type !== 'text') throw new Error('Expected text tool response')
@@ -77,20 +68,22 @@ function textData(result: Awaited<ReturnType<typeof dispatchTool>>): Record<stri
 function queueLawResponse(
   termPayload = lawSearch,
   articleHtml = lawArticle,
-  termHeaders: Record<string, string> = {},
-  articleHeaders: Record<string, string> = {},
 ): void {
-  mockedAxios.post.mockResolvedValueOnce({ data: termPayload, headers: termHeaders })
-  mockedAxios.get.mockResolvedValueOnce({ data: articleHtml, headers: articleHeaders })
+  mockedAxios.post
+    .mockResolvedValueOnce({ data: termPayload, headers: {} })
+    .mockResolvedValueOnce({ data: firecrawlResponse(articleHtml), headers: {} })
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   clearRegulationCache()
+  vi.stubEnv('FIRECRAWL_API_URL', 'http://127.0.0.1:3002')
+  vi.stubEnv('FIRECRAWL_API_KEY', '')
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllEnvs()
 })
 
 describe('query_regulation', () => {
@@ -109,7 +102,7 @@ describe('query_regulation', () => {
   })
 
   test('resolves an exact official name and returns one article with dates and provenance', async () => {
-    queueLawResponse(lawSearch, lawArticle, { etag: '"law-v1"' }, { etag: '"article-v1"' })
+    queueLawResponse()
 
     const data = textData(await dispatchTool('query_regulation', {
       lawName: '民法',
@@ -122,11 +115,17 @@ describe('query_regulation', () => {
       'term=%E6%B0%91%E6%B3%95&type=ONEBAR',
       expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
     )
-    expect(mockedAxios.get).toHaveBeenNthCalledWith(
-      1,
-      'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+    expect(mockedAxios.post).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:3002/v1/scrape',
+      expect.objectContaining({
+        url: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+        formats: ['rawHtml'],
+        onlyMainContent: false,
+      }),
       expect.objectContaining({ maxRedirects: 0, timeout: expect.any(Number) }),
     )
+    expect(mockedAxios.get).not.toHaveBeenCalled()
     expect(data).toMatchObject({
       status: 'current',
       regulation_name: '民法',
@@ -146,26 +145,67 @@ describe('query_regulation', () => {
     })
   })
 
-  test('reads a law result code without treating English or attachment links as regulation candidates', async () => {
-    mockedAxios.post.mockResolvedValueOnce({ data: '[{"PCODE":"","TERM":"民法"}]', headers: {} })
-    mockedAxios.get
-      .mockResolvedValueOnce({ data: officialLawSearchResults, headers: {} })
-      .mockResolvedValueOnce({ data: lawArticle, headers: {} })
+  test('uses the configured Firecrawl key without exposing it in source errors', async () => {
+    const testKey = 'firecrawl-unit-test-secret'
+    vi.stubEnv('FIRECRAWL_API_KEY', testKey)
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+    mockedAxios.post.mockRejectedValueOnce(new Error(testKey))
 
-    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    let failure: unknown
+    try {
+      await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })
+    } catch (error: unknown) {
+      failure = error
+    }
+    if (failure === undefined) throw new Error('Expected a Firecrawl source error')
 
-    expect(data).toMatchObject({ status: 'current', regulation_name: '民法', regulation_id: 'B0000001' })
-    expect(mockedAxios.get).toHaveBeenLastCalledWith(
-      'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
-      expect.objectContaining({ maxRedirects: 0 }),
+    expect(mockedAxios.post).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:3002/v1/scrape',
+      expect.objectContaining({ url: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001' }),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: `Bearer ${testKey}` }) }),
     )
+    const renderedError = JSON.stringify(createErrorResponse(failure, 'unused'))
+    expect(renderedError).not.toContain(testKey)
+    expect(failure).toMatchObject({ code: 'source_unavailable', sourceUrl: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001' })
+  })
+
+  test('does not use a built-in Firecrawl URL or direct HTML fallback', async () => {
+    vi.stubEnv('FIRECRAWL_API_URL', '')
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
+      code: 'source_unavailable',
+    })
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+
+  test('rejects Firecrawl HTML that does not identify an official law database URL', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(lawArticle, 'https://example.com/other'), headers: {} })
+
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
+      code: 'source_changed',
+      sourceUrl: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+    })
+    expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+
+  test('does not scrape a legacy search page when autocomplete has no usable law code', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: '[{"PCODE":"","TERM":"民法"}]', headers: {} })
+
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
+      code: 'regulation_not_found',
+      sourceUrl: 'https://law.moj.gov.tw/controls/GetTermList.ashx?term=%E6%B0%91%E6%B3%95&type=ONEBAR',
+    })
+    expect(mockedAxios.get).not.toHaveBeenCalled()
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
   })
 
   test('does not choose among fuzzy name matches', async () => {
-    const candidates = `<table class="tab-result"><tr><td>1.</td><td><a href="../Hot/AddHotLaw.ashx?pcode=B0000001&amp;cur=Ld">民法</a></td></tr>
-      <tr><td>2.</td><td><a href="../Hot/AddHotLaw.ashx?pcode=B0000002&amp;cur=Ld">民法施行法</a></td></tr></table>`
-    mockedAxios.post.mockResolvedValueOnce({ data: '[{"PCODE":"","TERM":"民法"}]', headers: {} })
-    mockedAxios.get.mockResolvedValueOnce({ data: candidates, headers: {} })
+    const candidates = '[{"PCODE":"B0000001","TERM":"民法"},{"PCODE":"B0000002","TERM":"民法施行法"}]'
+    mockedAxios.post.mockResolvedValueOnce({ data: candidates, headers: {} })
 
     const data = textData(await dispatchTool('query_regulation', {
       lawName: '民',
@@ -177,8 +217,8 @@ describe('query_regulation', () => {
       { regulation_name: '民法', regulation_id: 'B0000001' },
       { regulation_name: '民法施行法', regulation_id: 'B0000002' },
     ])
+    expect(mockedAxios.get).not.toHaveBeenCalled()
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1)
   })
 
   test('reports abolished law as a typed source error', async () => {
@@ -186,7 +226,7 @@ describe('query_regulation', () => {
     const term = JSON.stringify([{ PCODE: 'A0030110', TERM: lawName }])
     const abolished = `<main id="content"><h1>${lawName}</h1><div>法規名稱：廢 ${lawName}</div><div>廢止日期：民國 95 年 02 月 05 日</div></main>`
     mockedAxios.post.mockResolvedValueOnce({ data: term, headers: {} })
-    mockedAxios.get.mockResolvedValueOnce({ data: abolished, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(abolished), headers: {} })
 
     let failure: unknown
     try {
@@ -217,8 +257,8 @@ describe('query_regulation', () => {
     const cached = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
     expect(first.cache).toEqual({ status: 'miss' })
     expect(cached.cache).toEqual({ status: 'hit' })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
 
     queueLawResponse(lawSearch, lawArticle)
     const refreshed = textData(await dispatchTool('query_regulation', {
@@ -227,26 +267,21 @@ describe('query_regulation', () => {
       refresh: true,
     }))
     expect(refreshed.cache).toEqual({ status: 'refreshed' })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
-  test('revalidates expired cache with official validators and never presents a failed refresh as current', async () => {
+  test('refreshes expired cache through Firecrawl and never presents a failed refresh as current', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-16T12:00:00.000Z'))
-    queueLawResponse(lawSearch, lawArticle, {}, { etag: '"article-v1"' })
+    queueLawResponse()
     await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })
     vi.advanceTimersByTime(16 * 60 * 1000)
-    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
-    mockedAxios.get.mockResolvedValueOnce({ data: '', status: 304, headers: {} })
+    queueLawResponse()
 
     const revalidated = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
-    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
-    expect(mockedAxios.get).toHaveBeenLastCalledWith(
-      expect.stringContaining('/LawClass/LawAll.aspx'),
-      expect.objectContaining({ headers: expect.objectContaining({ 'If-None-Match': '"article-v1"' }) }),
-    )
+    expect(mockedAxios.post).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
     expect(revalidated.cache).toEqual({ status: 'revalidated' })
 
     vi.advanceTimersByTime(16 * 60 * 1000)
@@ -254,8 +289,8 @@ describe('query_regulation', () => {
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'source_unavailable',
     })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(3)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(5)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
   test('checks official status again after cache expiry and does not return an abolished law as current', async () => {
@@ -266,18 +301,17 @@ describe('query_regulation', () => {
     vi.advanceTimersByTime(16 * 60 * 1000)
     const abolished = '<main id="content"><h1>民法</h1><div>法規名稱：廢 民法</div><div>廢止日期：民國 95 年 02 月 05 日</div></main>'
     mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
-    mockedAxios.get.mockResolvedValueOnce({ data: abolished, headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(abolished), headers: {} })
 
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'regulation_abolished',
     })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
   test('distinguishes a confirmed no-match response from an upstream failure', async () => {
     mockedAxios.post.mockResolvedValueOnce({ data: '[]', headers: {} })
-    mockedAxios.get.mockResolvedValueOnce({ data: '<main>查無符合條件的法規</main>', headers: {} })
     let failure: unknown
     try {
       await dispatchTool('query_regulation', { lawName: '不存在法規', articleNumber: '1' })
@@ -285,6 +319,8 @@ describe('query_regulation', () => {
       failure = error
     }
     expect(failure).toMatchObject({ code: 'regulation_not_found' })
+    expect(failure).toMatchObject({ sourceUrl: 'https://law.moj.gov.tw/controls/GetTermList.ashx?term=%E4%B8%8D%E5%AD%98%E5%9C%A8%E6%B3%95%E8%A6%8F&type=ONEBAR' })
+    expect(mockedAxios.get).not.toHaveBeenCalled()
 
     clearRegulationCache()
     mockedAxios.post.mockRejectedValueOnce(new Error('network unavailable'))

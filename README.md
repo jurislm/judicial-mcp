@@ -26,7 +26,7 @@ Only an explicit no-matches response from the official site is returned as an em
 
 ## Regulation Lookup
 
-`query_regulation` looks up one article by law name and article number in the Ministry of Justice's [National Laws and Regulations Database](https://law.moj.gov.tw/). It does not require credentials or an API token.
+`query_regulation` looks up one article by law name and article number in the Ministry of Justice's [National Laws and Regulations Database](https://law.moj.gov.tw/). The official autocomplete lookup is tokenless. HTML pages are scraped only through a Firecrawl service configured with `FIRECRAWL_API_URL`; set `FIRECRAWL_API_KEY` when that service requires a key. If Firecrawl is unavailable, the tool returns a source error without a direct-HTTP HTML fallback.
 
 ```json
 {
@@ -39,7 +39,7 @@ The tool resolves only a unique exact law-name match after normalizing whitespac
 
 Successful results include the regulation name and official identifier, one article's text, the official page URL, the lookup URL, retrieval time, and version metadata. The official page supplies consolidated current text; this tool does not provide historical versions. Amendment, promulgation, and effective dates are returned as ISO dates when the official page states them. Missing dates are `null` and mark the result `partial`; a pending or mixed effective date is identified in `version.effective_status`. `source_version` is the published amendment date, falling back to the promulgation date.
 
-Responses cap article text at 30,000 characters. `truncated` and `partial` are `true` when text is capped or required version details are missing. `cache.status` is `miss`, `hit`, `refreshed`, `revalidated`, or `not_cached`. A process-local least-recently-used cache holds at most 100 exact law/article lookups for 15 minutes. Set `refresh: true` to bypass the cache. Expired entries are revalidated with official HTTP validators when available; if an upstream refresh fails, the tool returns an error and does not serve stale text as current.
+Responses cap article text at 30,000 characters. `truncated` and `partial` are `true` when text is capped or required version details are missing. `cache.status` is `miss`, `hit`, `refreshed`, `revalidated`, or `not_cached`. A process-local least-recently-used cache holds at most 100 exact law/article lookups for 15 minutes. Set `refresh: true` to bypass the cache. Expired entries are looked up and scraped again through Firecrawl; if an upstream refresh fails, the tool returns an error and does not serve stale text as current.
 
 Upstream failures and unrecognized page changes are MCP errors with `error.code`, `error.message`, `error.source_url`, and `error.retrieved_at`. Confirmed no-match, abolished-law, and missing-article responses have distinct codes.
 
@@ -69,23 +69,34 @@ Upstream failures and unrecognized page changes are MCP errors with `error.code`
 
 ### Environment Variables
 
-The public judgment search tools do not require credentials. These variables are used only by the existing token-based judgment and open-data tools:
+The public judgment search tools do not require credentials. These variables are used by the existing token-based judgment and open-data tools:
 
 ```bash
 JUDICIAL_USER=your_username
 JUDICIAL_PASSWORD=your_password
 ```
 
+Regulation lookup also needs a Firecrawl service base URL. The server appends `/v1/scrape` and sends raw-HTML scrape requests only for official Ministry of Justice pages. The key is read from the environment and is optional when Firecrawl is configured to allow keyless access. Use HTTPS when the configured service is remote; a key is sent over HTTP only to a loopback address.
+
+```bash
+FIRECRAWL_API_URL=https://your-firecrawl-host
+FIRECRAWL_API_KEY=your_service_key
+```
+
 ### Usage with Claude Code (via bunx)
 
-Install Bun first, then add this stdio server to your MCP configuration (`.mcp.json` or `~/.claude/settings.json`). The public judgment and regulation tools work without setting credentials:
+Install Bun first, then add this stdio server to your MCP configuration (`.mcp.json` or `~/.claude/settings.json`). The public judgment tools work without credentials; regulation lookup needs the Firecrawl environment settings above:
 
 ```json
 {
   "mcpServers": {
     "judicial": {
       "command": "bunx",
-      "args": ["@jurislm/judicial-mcp@latest"]
+      "args": ["@jurislm/judicial-mcp@latest"],
+      "env": {
+        "FIRECRAWL_API_URL": "https://your-firecrawl-host",
+        "FIRECRAWL_API_KEY": "your_service_key"
+      }
     }
   }
 }

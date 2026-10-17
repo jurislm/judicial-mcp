@@ -9,18 +9,17 @@ import {
 import { RegulationSourceError } from './source-error.js'
 
 const BASE_URL = 'https://law.moj.gov.tw'
-const SEARCH_URL = new URL('/Law/LawSearchResult.aspx', BASE_URL)
 const TERM_URL = new URL('/controls/GetTermList.ashx', BASE_URL)
 const RESPONSE_LIMIT = 2_000_000
+const FIRECRAWL_TIMEOUT_MS = 30_000
+const FIRECRAWL_REQUEST_TIMEOUT_MS = 40_000
 const MAX_ARTICLE_LENGTH = 30_000
 const MAX_CANDIDATES = 10
 const RESPONSE_TYPE: 'text' = 'text'
-const NO_RESULTS = /查無.{0,16}(?:法規|資料|符合)|沒有符合條件的法規/
 
 interface RegulationCandidate {
   name: string
   identifier: string
-  abolished: boolean
 }
 
 interface RegulationVersion {
@@ -115,15 +114,6 @@ function normalizeName(value: string): string {
   return value.replaceAll('台', '臺').replaceAll(/\s+/g, '').toLocaleLowerCase()
 }
 
-function searchUrl(name: string): URL {
-  const url = new URL(SEARCH_URL.href)
-  url.searchParams.set('cur', 'Ld')
-  url.searchParams.set('ty', 'ONEBAR')
-  url.searchParams.set('kw', name)
-  url.searchParams.set('psize', '20')
-  return url
-}
-
 function termUrl(name: string): URL {
   const url = new URL(TERM_URL.href)
   url.searchParams.set('term', name)
@@ -137,27 +127,58 @@ function detailUrl(identifier: string): URL {
   return url
 }
 
-function requestOptions(conditional?: { etag?: string; lastModified?: string }) {
-  const headers: Record<string, string> = {
-    Accept: 'text/html,application/xhtml+xml',
-    'User-Agent': 'judicial-mcp/1.5 (https://github.com/jurislm/judicial-mcp)',
-  }
-  if (conditional?.etag) headers['If-None-Match'] = conditional.etag
-  if (conditional?.lastModified) headers['If-Modified-Since'] = conditional.lastModified
+function termRequestOptions() {
   return {
     timeout: 15_000,
     maxContentLength: RESPONSE_LIMIT,
     maxBodyLength: RESPONSE_LIMIT,
     maxRedirects: 0,
     responseType: RESPONSE_TYPE,
-    validateStatus: (status: number) => (status >= 200 && status < 300) || status === 304,
-    headers,
+    validateStatus: (status: number) => status >= 200 && status < 300,
+    headers: {
+      Accept: 'application/json,text/plain',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'judicial-mcp/1.5 (https://github.com/jurislm/judicial-mcp)',
+    },
   }
 }
 
-function responseHeader(response: AxiosResponse<string>, name: string): string | undefined {
-  const value = response.headers[name]
-  return typeof value === 'string' && value.length > 0 ? value : undefined
+function firecrawlEndpoint(sourceUrl: URL): { endpoint: URL; apiKey?: string } {
+  const configuredUrl = process.env.FIRECRAWL_API_URL?.trim()
+  if (!configuredUrl) throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+  let endpoint: URL
+  try {
+    endpoint = new URL(configuredUrl)
+  } catch {
+    throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+  }
+  if (
+    (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') ||
+    endpoint.username.length > 0 || endpoint.password.length > 0 ||
+    endpoint.search.length > 0 || endpoint.hash.length > 0
+  ) throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+  const apiKey = process.env.FIRECRAWL_API_KEY?.trim()
+  const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+  if (apiKey && endpoint.protocol === 'http:' && !loopbackHosts.has(endpoint.hostname.toLocaleLowerCase())) {
+    throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+  }
+  endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, '')}/v1/scrape`
+  return apiKey ? { endpoint, apiKey } : { endpoint }
+}
+
+function firecrawlRequestOptions(apiKey?: string) {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  return {
+    timeout: FIRECRAWL_REQUEST_TIMEOUT_MS,
+    maxContentLength: RESPONSE_LIMIT,
+    maxBodyLength: RESPONSE_LIMIT,
+    maxRedirects: 0,
+    headers,
+  }
 }
 
 function sourceFailure(error: unknown, url: URL, notFoundOn404 = true): never {
@@ -169,18 +190,40 @@ function sourceFailure(error: unknown, url: URL, notFoundOn404 = true): never {
   throw new RegulationSourceError(status === 404 && notFoundOn404 ? 'regulation_not_found' : 'source_unavailable', url.href)
 }
 
-function responseHtml(response: AxiosResponse<string>, url: URL): string {
+function responseText(response: AxiosResponse<string>, url: URL): string {
   if (typeof response.data !== 'string' || response.data.length > RESPONSE_LIMIT) {
     throw new RegulationSourceError('source_changed', url.href)
   }
   return response.data
 }
 
+function responseHtml(payload: unknown, url: URL): string {
+  if (!isRecord(payload)) throw new RegulationSourceError('source_changed', url.href)
+  if (payload.success !== true) throw new RegulationSourceError('source_unavailable', url.href)
+  if (!isRecord(payload.data) || typeof payload.data.rawHtml !== 'string' || payload.data.rawHtml.length === 0 || payload.data.rawHtml.length > RESPONSE_LIMIT) {
+    throw new RegulationSourceError('source_changed', url.href)
+  }
+  const metadata = payload.data.metadata
+  if (!isRecord(metadata) || typeof metadata.sourceURL !== 'string') {
+    throw new RegulationSourceError('source_changed', url.href)
+  }
+  let resolvedUrl: URL
+  try {
+    resolvedUrl = new URL(metadata.sourceURL)
+  } catch {
+    throw new RegulationSourceError('source_changed', url.href)
+  }
+  if (resolvedUrl.protocol !== 'https:' || resolvedUrl.hostname !== 'law.moj.gov.tw') {
+    throw new RegulationSourceError('source_changed', url.href)
+  }
+  return payload.data.rawHtml
+}
+
 function validPcode(value: string | undefined): value is string {
   return value !== undefined && /^[A-Z]\d{7}$/.test(value.toLocaleUpperCase())
 }
 
-function parseTermCandidates(payload: string, lawName: string, url: URL): RegulationCandidate[] {
+function parseTermCandidates(payload: string, url: URL): RegulationCandidate[] {
   let parsed: unknown
   try {
     parsed = JSON.parse(payload)
@@ -195,48 +238,11 @@ function parseTermCandidates(payload: string, lawName: string, url: URL): Regula
     }
     const identifier = item.PCODE.trim()
     const name = item.TERM.replaceAll(/\s+/g, ' ').trim()
-    if (identifier.length === 0 || normalizeName(name) !== normalizeName(lawName)) continue
-    if (!validPcode(identifier) || name.length === 0) throw new RegulationSourceError('source_changed', url.href)
+    if (identifier.length === 0 || name.length === 0) continue
+    if (!validPcode(identifier)) throw new RegulationSourceError('source_changed', url.href)
     const normalizedIdentifier = identifier.toLocaleUpperCase()
     const duplicate = candidates.find(candidate => candidate.identifier === normalizedIdentifier && normalizeName(candidate.name) === normalizeName(name))
-    if (!duplicate) candidates.push({ name, identifier: normalizedIdentifier, abolished: false })
-  }
-  return candidates
-}
-
-function parseCandidates(html: string, url: URL): RegulationCandidate[] {
-  const $ = load(html)
-  const candidates: RegulationCandidate[] = []
-  $('a[href*="AddHotLaw.ashx"]').each((_, element) => {
-    const anchor = $(element)
-    const href = anchor.attr('href')
-    if (!href) return
-    let link: URL
-    try {
-      link = new URL(href, url)
-    } catch {
-      throw new RegulationSourceError('source_changed', url.href)
-    }
-    if (link.protocol !== 'https:' || link.hostname !== 'law.moj.gov.tw' || link.pathname.toLocaleLowerCase() !== '/hot/addhotlaw.ashx') {
-      throw new RegulationSourceError('source_changed', url.href)
-    }
-    const identifier = link.searchParams.get('pcode') ?? link.searchParams.get('PCODE')
-    if (!identifier || !validPcode(identifier)) throw new RegulationSourceError('source_changed', url.href)
-    const displayName = anchor.text().replaceAll(/\s+/g, ' ').trim()
-    if (!displayName) throw new RegulationSourceError('source_changed', url.href)
-    const row = anchor.closest('tr')
-    const rowText = (row.length ? row.text() : anchor.parent().text()).replaceAll(/\s+/g, ' ').trim()
-    const rowTitle = rowText.replace(/^\d+\.?\s*/, '')
-    const abolished = (/^廢(?!棄)/.test(rowTitle) && normalizeName(rowTitle).includes(normalizeName(displayName))) ||
-      /^廢(?!棄)/.test(displayName) || /(?:法規狀態|狀態)\s*[:：]?\s*(?:已)?廢止/.test(rowText)
-    const name = abolished ? displayName.replace(/^廢(?:止)?\s*/, '').trim() : displayName
-    const normalizedIdentifier = identifier.toLocaleUpperCase()
-    const duplicate = candidates.find(candidate => candidate.identifier === normalizedIdentifier && normalizeName(candidate.name) === normalizeName(name))
-    if (duplicate) duplicate.abolished = duplicate.abolished || abolished
-    else candidates.push({ name, identifier: normalizedIdentifier, abolished })
-  })
-  if (candidates.length === 0 && !NO_RESULTS.test($('body').text())) {
-    throw new RegulationSourceError('source_changed', url.href)
+    if (!duplicate) candidates.push({ name, identifier: normalizedIdentifier })
   }
   return candidates
 }
@@ -405,49 +411,46 @@ function resolveCandidate(candidates: RegulationCandidate[], lawName: string, lo
   return { ambiguous: ambiguousResult(exact.length > 1 ? exact : candidates, lookupURL) }
 }
 
-async function fetchHtml(url: URL, cacheEntry?: Pick<ValidatedRegulationCacheEntry, 'etag' | 'lastModified'>): Promise<{
-  response: AxiosResponse<string>
-  html: string | null
-}> {
-  let response: AxiosResponse<string>
+async function fetchHtml(url: URL): Promise<string> {
+  const { endpoint, apiKey } = firecrawlEndpoint(url)
+  let response: AxiosResponse<unknown>
   try {
-    response = await axios.get<string>(url.href, requestOptions(cacheEntry))
+    response = await axios.post<unknown>(
+      endpoint.href,
+      {
+        url: url.href,
+        formats: ['rawHtml'],
+        onlyMainContent: false,
+        timeout: FIRECRAWL_TIMEOUT_MS,
+      },
+      firecrawlRequestOptions(apiKey),
+    )
   } catch (error: unknown) {
-    sourceFailure(error, url)
+    sourceFailure(error, url, false)
   }
-  if (response.status === 304) return { response, html: null }
-  return { response, html: responseHtml(response, url) }
+  return responseHtml(response.data, url)
 }
 
 async function fetchTermCandidates(name: string, url: URL): Promise<RegulationCandidate[]> {
   let response: AxiosResponse<string>
   try {
-    const options = requestOptions()
+    const options = termRequestOptions()
     response = await axios.post<string>(
       url.href,
       new URLSearchParams({ term: name, type: 'ONEBAR' }).toString(),
-      {
-        ...options,
-        headers: { ...options.headers, 'Content-Type': 'application/x-www-form-urlencoded' },
-      },
+      options,
     )
   } catch (error: unknown) {
     sourceFailure(error, url, false)
   }
   if (response.status < 200 || response.status >= 300) throw new RegulationSourceError('source_changed', url.href)
-  return parseTermCandidates(responseHtml(response, url), name, url)
+  return parseTermCandidates(responseText(response, url), url)
 }
 
 async function lookupRegulation(lawName: string): Promise<{ resolution: CandidateResolution; lookupURL: URL }> {
   const directURL = termUrl(lawName)
   const directCandidates = await fetchTermCandidates(lawName, directURL)
-  if (directCandidates.length > 0) {
-    return { resolution: resolveCandidate(directCandidates, lawName, directURL), lookupURL: directURL }
-  }
-  const lookupURL = searchUrl(lawName)
-  const lookup = await fetchHtml(lookupURL)
-  if (lookup.html === null) throw new RegulationSourceError('source_changed', lookupURL.href)
-  return { resolution: resolveCandidate(parseCandidates(lookup.html, lookupURL), lawName, lookupURL), lookupURL }
+  return { resolution: resolveCandidate(directCandidates, lawName, directURL), lookupURL: directURL }
 }
 
 export async function queryRegulation(args: Record<string, unknown>): Promise<RegulationResult> {
@@ -478,32 +481,11 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
         return resolution.ambiguous
       }
       const candidate = resolution.candidate
-      if (candidate.abolished) throw new RegulationSourceError('regulation_abolished', lookupURL.href)
       const detailURL = detailUrl(candidate.identifier)
-      const reusableValidators = candidate.identifier === cached.value.regulation_id ? cached : undefined
-      const fetched = await fetchHtml(detailURL, reusableValidators)
-      let result: RegulationResult
-      if (fetched.html === null) {
-        if (candidate.identifier !== cached.value.regulation_id) {
-          throw new RegulationSourceError('source_changed', detailURL.href)
-        }
-        result = {
-          ...cached.value,
-          regulation_name: candidate.name,
-          source_url: detailURL.href,
-          search_source_url: lookupURL.href,
-          retrieved_at: checkedAt,
-          cache: { status: 'revalidated' },
-        }
-      } else {
-        const article = parseArticle(fetched.html, detailURL, candidate.name, articleNumber)
-        result = makeResult(candidate, articleNumber, article, detailURL, lookupURL, checkedAt, 'revalidated')
-      }
-      setRegulationCacheEntry(key, {
-        value: result,
-        etag: responseHeader(fetched.response, 'etag') ?? cached.etag,
-        lastModified: responseHeader(fetched.response, 'last-modified') ?? cached.lastModified,
-      }, now)
+      const html = await fetchHtml(detailURL)
+      const article = parseArticle(html, detailURL, candidate.name, articleNumber)
+      const result = makeResult(candidate, articleNumber, article, detailURL, lookupURL, checkedAt, 'revalidated')
+      setRegulationCacheEntry(key, { value: result }, now)
       return result
     } catch (error: unknown) {
       deleteRegulationCacheEntry(key)
@@ -515,18 +497,12 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
   const { lookupURL, resolution } = lookup
   if ('ambiguous' in resolution) return resolution.ambiguous
   const candidate = resolution.candidate
-  if (candidate.abolished) throw new RegulationSourceError('regulation_abolished', lookupURL.href)
 
   const articleURL = detailUrl(candidate.identifier)
-  const fetched = await fetchHtml(articleURL)
-  if (fetched.html === null) throw new RegulationSourceError('source_changed', articleURL.href)
-  const article = parseArticle(fetched.html, articleURL, candidate.name, articleNumber)
+  const html = await fetchHtml(articleURL)
+  const article = parseArticle(html, articleURL, candidate.name, articleNumber)
   const retrievedAt = new Date().toISOString()
   const result = makeResult(candidate, articleNumber, article, articleURL, lookupURL, retrievedAt, refresh ? 'refreshed' : 'miss')
-  setRegulationCacheEntry(key, {
-    value: result,
-    etag: responseHeader(fetched.response, 'etag'),
-    lastModified: responseHeader(fetched.response, 'last-modified'),
-  }, now)
+  setRegulationCacheEntry(key, { value: result }, now)
   return result
 }

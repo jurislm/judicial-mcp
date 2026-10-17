@@ -1,8 +1,6 @@
 export interface RegulationCacheEntry {
   value: unknown
   expiresAt: number
-  etag?: string
-  lastModified?: string
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000
