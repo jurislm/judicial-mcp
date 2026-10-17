@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.1](https://github.com/jurislm/judicial-mcp/compare/v1.6.0...v1.6.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* push 從同分支上一次成功掃描的 head 掃起，不漏掉被取消 run 的 commit（JUR-767） ([550c869](https://github.com/jurislm/judicial-mcp/commit/550c86963326e8fa9e954bd5b1fc66cc8b758479))
+
+
+### Tests
+
+* secret-scan 範圍抽成腳本並補行為測試，重現 main 連續 push 漏掃（JUR-767） ([5f07d7e](https://github.com/jurislm/judicial-mcp/commit/5f07d7eb6546e51ccf2c084a564672f131aa4869))
+
 ## [1.6.0](https://github.com/jurislm/judicial-mcp/compare/v1.5.0...v1.6.0) (2026-10-17)
 
 
