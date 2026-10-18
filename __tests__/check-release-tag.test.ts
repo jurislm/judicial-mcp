@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkRelease } from '../scripts/ci/check-release-tag'
+import { checkRelease, releaseInputs } from '../scripts/ci/check-release-tag'
 
 describe('checkRelease', () => {
   it('tag 事件：CI_COMMIT_TAG 必須等於 v＋package 版本', () => {
@@ -30,5 +30,13 @@ describe('checkRelease', () => {
 
   it('其他事件一律拒絕', () => {
     expect(() => checkRelease('1.6.2', { event: 'push' })).toThrow(/push/)
+  })
+})
+
+describe('releaseInputs', () => {
+  it('除了 files，也涵蓋 npm 自動帶的檔案和 types/ 的建置輸入', () => {
+    expect(releaseInputs(['src', 'bin'])).toEqual(
+      expect.arrayContaining(['src', 'bin', 'package.json', 'README.md', 'LICENSE', 'tsconfig.json', 'bun.lock']),
+    )
   })
 })

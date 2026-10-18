@@ -28,6 +28,11 @@ export function checkRelease(version: string, context: ReleaseContext): void {
   throw new Error(`npm release only runs on tag or manual events; received ${context.event}`)
 }
 
+// npm 一定會帶 package.json／README／LICENSE；types/ 由 tsconfig.json 和鎖定的 TypeScript 版本產生。
+export function releaseInputs(files: string[]): string[] {
+  return ['package.json', 'README.md', 'LICENSE', 'tsconfig.json', 'bun.lock', ...files]
+}
+
 function git(args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim()
 }
@@ -50,7 +55,7 @@ if (import.meta.main) {
     event === 'tag'
       ? { event, tag: process.env.CI_COMMIT_TAG }
       : event === 'manual'
-        ? readManualContext(tag, ['package.json', ...pkg.files])
+        ? readManualContext(tag, releaseInputs(pkg.files))
         : { event }
   checkRelease(pkg.version, context)
   console.error(`Release verified: ${tag} (${event})`)
