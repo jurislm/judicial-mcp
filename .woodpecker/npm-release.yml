@@ -9,7 +9,7 @@ steps:
   - name: verify
     image: oven/bun:1.3.14-alpine
     commands:
-      - apk add --no-cache git
+      - apk add --no-cache git nodejs npm
       - bun install --frozen-lockfile
       - bun run typecheck
       - bun run test
