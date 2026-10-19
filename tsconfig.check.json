@@ -3,5 +3,5 @@
   "compilerOptions": {
     "rootDir": "."
   },
-  "include": ["src/**/*", "bin/**/*", "__tests__/**/*", "vitest.config.ts"]
+  "include": ["src/**/*", "bin/**/*", "__tests__/**/*", "scripts/parity/**/*", "vitest.config.ts"]
 }

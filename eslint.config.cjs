@@ -20,7 +20,7 @@ module.exports = [
     },
   },
   {
-    files: ['src/**/*.ts', 'bin/**/*.ts', '__tests__/**/*.ts', 'vitest.config.ts'],
+    files: ['src/**/*.ts', 'bin/**/*.ts', '__tests__/**/*.ts', 'scripts/parity/**/*.ts', 'vitest.config.ts'],
     languageOptions: {
       parser: tsParser,
       globals: { ...globals.node },
