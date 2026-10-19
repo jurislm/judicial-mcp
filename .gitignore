@@ -73,3 +73,6 @@ yarn.lock
 
 # Git worktrees
 .worktrees/
+
+# 對照腳本輸出
+parity-out/
