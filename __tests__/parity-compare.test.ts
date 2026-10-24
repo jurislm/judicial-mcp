@@ -112,3 +112,17 @@ describe('CASES', () => {
     for (const id of ['Q1', 'Q3', 'Q4', 'Q5-main_text']) expect(expectOf(id)).toBe('expected_fail')
   })
 })
+
+
+describe('Q2 known judgment', () => {
+  it('requires non-empty matching ids and rejects missing or blank ids', () => {
+    const rule = CASES.find((c) => c.id === 'Q2')!.rule
+    for (const results of [[], [{}], [{ case_id: '', jid: '' }], [{ case_id: ' ', jid: ' ' }]]) {
+      expect(evaluateRule(rule, ok({ results }), ok({ results })).pass).toBe(false)
+    }
+    expect(evaluateRule(rule, ok({ results: [{ case_id: 'A' }] }), ok({ results: [{ jid: 'A' }] })).pass).toBe(true)
+  })
+  it('preserves legitimate empty-set equality', () => {
+    expect(evaluateRule({ kind: 'id_set', ours: 'a', theirs: 'b', min: 'all' }, ok({ a: [] }), ok({ b: [] })).pass).toBe(true)
+  })
+})

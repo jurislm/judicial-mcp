@@ -35,14 +35,14 @@ scripts/parity/run.sh
 
 | 規則 | 意思 |
 | -- | -- |
-| `id_set` | 兩邊 id 集合的交集筆數 ≥ `min`；`min: 'all'` 表示集合相同 |
+| `id_set` | 兩邊 id 集合的交集筆數 ≥ `min`；`min: 'all'` 表示集合相同；Q2 另設 `nonEmpty: true`，至少要有一筆非空識別碼。其他案例保留合法空集合相等 |
 | `text_norm` | NFKC 正規化（全半形）並去掉全部空白後相同；陣列逐筆比。設 `similarity` 時改比字元相似度（PDF 用 0.98） |
 | `field_presence` | 指定欄位兩邊都非空 |
 | `field_equal` | 指定欄位正規化後相同（陣列照順序比） |
 
 路徑寫法：`results[].jid` 取每筆的 jid，`results.0.jid` 取第一筆，`full_text#len` 取長度。
 
-冷、熱兩輪都 PASS，且 `timingGate` 列出的階段符合「我方 5 次中位數 ≤ 對方 5 次中位數 × 1.5」，才算 PASS。對方回錯誤時判 ERROR，因為沒辦法比。`timed: true` 的案例會記錄 5 次耗時；只有 `timingGate` 列出的階段會影響判定，其他只記錄。
+冷、熱兩輪都 PASS，且 `timingGate` 列出的階段符合「我方 5 次中位數 ≤ 對方 5 次中位數 × 1.5」，才算 PASS。雙方 transport／timeout 例外均判 ERROR；`isError` 本身不是 transport。來源 `source_unavailable` 判 ERROR；Q4 未設 Firecrawl 時，內容判定為預期 FAIL。對方其他工具錯誤由 `acceptError` 控制，未允許時判 ERROR。`timed: true` 的案例會記錄 5 次耗時；只有 `timingGate` 列出的階段會影響判定，其他只記錄。任一計時輪次呼叫失敗，該輪雙方耗時均不進中位數，JSON 保留失敗原因，Markdown 標 ERROR，整案 ERROR／exit 1（包含 Q4 未設 Firecrawl 而無法取得成功樣本的情況）。不足指定次數也不能通過。
 
 | 判定 × 預期 | 結果 | exit code |
 | -- | -- | -- |

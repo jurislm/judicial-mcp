@@ -1,5 +1,5 @@
 export type Rule =
-  | { kind: 'id_set'; ours: string; theirs: string; min: number | 'all' }
+  | { kind: 'id_set'; ours: string; theirs: string; min: number | 'all'; nonEmpty?: boolean }
   | { kind: 'text_norm'; ours: string; theirs: string; similarity?: number }
   | { kind: 'field_presence'; ours: string; theirs: string }
   | { kind: 'field_equal'; ours: string; theirs: string }
@@ -48,6 +48,7 @@ export interface TimingStats {
   ours_median: number
   theirs_median: number
   within: boolean
+  errors?: string[]
 }
 
 export interface CaseReport {
@@ -131,11 +132,11 @@ export function evaluateRule(rule: Rule, ours: SideResult, theirs: SideResult): 
   const b = pick(theirs.data, rule.theirs)
   switch (rule.kind) {
     case 'id_set': {
-      const left = new Set(asList(a).map(normalizeText))
-      const right = new Set(asList(b).map(normalizeText))
+      const left = new Set(asList(a).map(normalizeText).filter(Boolean))
+      const right = new Set(asList(b).map(normalizeText).filter(Boolean))
       const shared = [...left].filter((id) => right.has(id))
       const need = rule.min === 'all' ? Math.max(left.size, right.size) : rule.min
-      const pass = rule.min === 'all' ? shared.length === left.size && shared.length === right.size : shared.length >= need
+      const pass = (!rule.nonEmpty || (left.size > 0 && right.size > 0)) && (rule.min === 'all' ? shared.length === left.size && shared.length === right.size : shared.length >= need)
       return { pass, detail: `交集 ${shared.length}（我方 ${left.size}、對方 ${right.size}，門檻 ${rule.min === 'all' ? '全同' : need}）：${shared.join('、')}` }
     }
     case 'text_norm': {

@@ -36,7 +36,7 @@ export const CASES: ParityCase[] = [
     id: 'Q2', card: 'JUR-817', title: 'Q2 案號查詢 最高法院 114 台上 3753',
     ours: { tool: 'search_judgments', args: { court: '最高法院', year: 114, caseNumber: '114年度台上字第3753號' }, observe: { count: 'count', ambiguous: 'ambiguous' } },
     theirs: { tool: 'search_judgments', args: { court: '最高法院', year_from: 114, case_word: '台上', case_number: '3753' }, observe: { count: 'total_count' } },
-    rule: { kind: 'id_set', ours: 'results[].case_id', theirs: 'results[].jid', min: 'all' }, expect: 'pass', timed: true,
+    rule: { kind: 'id_set', ours: 'results[].case_id', theirs: 'results[].jid', min: 'all', nonEmpty: true }, expect: 'pass', timed: true,
   },
   xf('J-main_text', 'JUR-817', '「預售屋 遲延交屋」＋主文「原告之訴駁回」各 20 筆，交集 ≥ 18',
     same('search_judgments', { keyword: Q1_KEYWORD, mainText: '原告之訴駁回', limit: 20 }, { keyword: Q1_KEYWORD, main_text: '原告之訴駁回', max_results: 20 }),

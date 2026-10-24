@@ -11,7 +11,7 @@ import {
 } from './compare.js'
 
 type Side = 'ours' | 'theirs'
-interface Measured { result: SideResult; ms: number }
+interface Measured { result: SideResult; ms: number; transportError?: boolean }
 
 const { values } = parseArgs({
   options: {
@@ -80,7 +80,7 @@ async function invoke(client: Client, side: Side, call: Call): Promise<Measured>
     const failed = response.isError === true || (side === 'theirs' && pick(data, 'success') === false)
     return { result: { ok: !failed, data }, ms }
   } catch (error) {
-    return { result: { ok: false, data: { error: error instanceof Error ? error.message : String(error) } }, ms: Math.round(performance.now() - started) }
+    return { result: { ok: false, data: { error: error instanceof Error ? error.message : String(error) } }, ms: Math.round(performance.now() - started), transportError: true }
   } finally {
     await sleep(REQUEST_GAP_MS)
   }
@@ -118,20 +118,30 @@ function evaluatePass(c: ParityCase, memo: Map<string, Measured>): PassReport {
   const ours = memo.get(callKey('ours', c.ours)) as Measured
   const theirs = memo.get(callKey('theirs', c.theirs)) as Measured
   const observed = { ours: observe(c.ours, ours), theirs: observe(c.theirs, theirs) }
-  if (!theirs.result.ok && !c.theirs.acceptError) {
+  if (ours.transportError || theirs.transportError) {
+    return { verdict: 'ERROR', detail: `連線失敗：${JSON.stringify({ ours: ours.transportError ? ours.result.data : null, theirs: theirs.transportError ? theirs.result.data : null }).slice(0, 300)}`, ours_ms: ours.ms, theirs_ms: theirs.ms, observed }
+  }
+  if (!ours.result.ok && pick(ours.result.data, 'error.code') === 'source_unavailable' && !(c.id === 'Q4' && !process.env.FIRECRAWL_API_URL?.trim())) {
+    return { verdict: 'ERROR', detail: '我方來源無法使用', ours_ms: ours.ms, theirs_ms: theirs.ms, observed }
+  }
+  if (!theirs.result.ok && (!c.theirs.acceptError || pick(theirs.result.data, 'error.code') === 'source_unavailable')) {
     return { verdict: 'ERROR', detail: `對方回錯誤，無法比對：${JSON.stringify(pick(theirs.result.data, 'error') ?? theirs.result.data).slice(0, 200)}`, ours_ms: ours.ms, theirs_ms: theirs.ms, observed }
   }
   const rule = evaluateRule(c.rule, ours.result, { ok: true, data: theirs.result.data })
   return { verdict: rule.pass ? 'PASS' : 'FAIL', detail: rule.detail, ours_ms: ours.ms, theirs_ms: theirs.ms, observed }
 }
 
-const samples: Record<TimingPhase, Map<string, { ours: number[]; theirs: number[] }>> = { cold: new Map(), warm: new Map() }
+const samples: Record<TimingPhase, Map<string, { ours: number[]; theirs: number[]; errors: string[] }>> = { cold: new Map(), warm: new Map() }
 const timedCases = cases.filter((c) => c.timed)
 
-function record(phase: TimingPhase, c: ParityCase, ours: number, theirs: number) {
-  const bucket = samples[phase].get(c.id) ?? { ours: [], theirs: [] }
-  bucket.ours.push(ours)
-  bucket.theirs.push(theirs)
+function record(phase: TimingPhase, c: ParityCase, ours: Measured, theirs: Measured) {
+  const bucket = samples[phase].get(c.id) ?? { ours: [], theirs: [], errors: [] }
+  if (!ours.result.ok || !theirs.result.ok || ours.transportError || theirs.transportError) {
+    bucket.errors.push(`第 ${bucket.ours.length + bucket.errors.length + 1} 輪：${JSON.stringify({ ours: ours.result, theirs: theirs.result }).slice(0, 400)}`)
+  } else {
+    bucket.ours.push(ours.ms)
+    bucket.theirs.push(theirs.ms)
+  }
   samples[phase].set(c.id, bucket)
 }
 
@@ -139,7 +149,7 @@ async function sampleTimed(session: Session, phase: TimingPhase) {
   for (const c of timedCases) {
     const ours = await invoke(session.ours, 'ours', c.ours)
     const theirs = await invoke(session.theirs, 'theirs', c.theirs)
-    record(phase, c, ours.ms, theirs.ms)
+    record(phase, c, ours, theirs)
   }
 }
 
@@ -150,8 +160,8 @@ const cold = await runPass(session, cases)
 process.stderr.write('熱快取（全部案例）\n')
 const warm = await runPass(session, cases)
 for (const c of timedCases) {
-  record('cold', c, (cold.get(callKey('ours', c.ours)) as Measured).ms, (cold.get(callKey('theirs', c.theirs)) as Measured).ms)
-  record('warm', c, (warm.get(callKey('ours', c.ours)) as Measured).ms, (warm.get(callKey('theirs', c.theirs)) as Measured).ms)
+  record('cold', c, cold.get(callKey('ours', c.ours)) as Measured, cold.get(callKey('theirs', c.theirs)) as Measured)
+  record('warm', c, warm.get(callKey('ours', c.ours)) as Measured, warm.get(callKey('theirs', c.theirs)) as Measured)
 }
 for (let i = 1; i < rounds; i++) await sampleTimed(session, 'warm')
 await closeSession(session)
@@ -167,13 +177,15 @@ const reports: CaseReport[] = cases.map((c) => {
   const passes = { cold: evaluatePass(c, cold), warm: evaluatePass(c, warm) }
   const timing = c.timed
     ? Object.fromEntries((['cold', 'warm'] as const).map((phase) => {
-      const bucket = samples[phase].get(c.id) as { ours: number[]; theirs: number[] }
-      return [phase, timingStats(bucket.ours, bucket.theirs)]
+      const bucket = samples[phase].get(c.id) as { ours: number[]; theirs: number[]; errors: string[] }
+      const stats = timingStats(bucket.ours, bucket.theirs)
+      return [phase, { ...stats, errors: bucket.errors, within: bucket.errors.length === 0 && bucket.ours.length === rounds && bucket.theirs.length === rounds && stats.within }]
     }))
     : null
   const verdicts = [passes.cold.verdict, passes.warm.verdict]
   const timingOk = (c.timingGate ?? []).every((phase) => timing?.[phase]?.within)
-  const verdict: Verdict = verdicts.includes('ERROR') ? 'ERROR' : verdicts.every((v) => v === 'PASS') && timingOk ? 'PASS' : 'FAIL'
+  const timingError = Object.values(timing ?? {}).some((stats) => stats.errors.length > 0 || stats.ours_ms.length !== rounds || stats.theirs_ms.length !== rounds)
+  const verdict: Verdict = timingError || verdicts.includes('ERROR') ? 'ERROR' : verdicts.every((v) => v === 'PASS') && timingOk ? 'PASS' : 'FAIL'
   return { id: c.id, card: c.card, title: c.title, expect: c.expect, verdict, outcome: judgeCase(verdict, c.expect), passes, timing }
 })
 
@@ -190,8 +202,8 @@ const report = {
   cases: reports,
 }
 
-const fmt = (stats?: { ours_median: number; theirs_median: number; within: boolean }) =>
-  stats ? `${stats.ours_median}／${stats.theirs_median} ms ${stats.within ? '✓' : '✗'}` : '—'
+const fmt = (stats?: { ours_median: number; theirs_median: number; within: boolean; errors?: string[] }) =>
+  stats?.errors?.length ? `ERROR（${stats.errors.length} 輪失敗）` : stats ? `${stats.ours_median}／${stats.theirs_median} ms ${stats.within ? '✓' : '✗'}` : '—'
 const cell = (text: string) => text.replace(/\|/g, '\\|').replace(/\n/g, ' ')
 const outcomeLabel: Record<string, string> = { ok: '符合預期', xfail: '預期失敗', unexpected_fail: '**意外 FAIL**', unexpected_pass: '**意外 PASS**', error: '**ERROR**' }
 const markdown = [
