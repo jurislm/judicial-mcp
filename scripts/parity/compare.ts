@@ -132,11 +132,14 @@ export function evaluateRule(rule: Rule, ours: SideResult, theirs: SideResult): 
   const b = pick(theirs.data, rule.theirs)
   switch (rule.kind) {
     case 'id_set': {
-      const left = new Set(asList(a).map(normalizeText).filter(Boolean))
-      const right = new Set(asList(b).map(normalizeText).filter(Boolean))
+      const leftValues = asList(a).map(normalizeText)
+      const rightValues = asList(b).map(normalizeText)
+      const hasBlankId = leftValues.some((id) => !id) || rightValues.some((id) => !id)
+      const left = new Set(leftValues.filter(Boolean))
+      const right = new Set(rightValues.filter(Boolean))
       const shared = [...left].filter((id) => right.has(id))
       const need = rule.min === 'all' ? Math.max(left.size, right.size) : rule.min
-      const pass = (!rule.nonEmpty || (left.size > 0 && right.size > 0)) && (rule.min === 'all' ? shared.length === left.size && shared.length === right.size : shared.length >= need)
+      const pass = !hasBlankId && (!rule.nonEmpty || (left.size > 0 && right.size > 0)) && (rule.min === 'all' ? shared.length === left.size && shared.length === right.size : shared.length >= need)
       return { pass, detail: `交集 ${shared.length}（我方 ${left.size}、對方 ${right.size}，門檻 ${rule.min === 'all' ? '全同' : need}）：${shared.join('、')}` }
     }
     case 'text_norm': {
@@ -148,7 +151,7 @@ export function evaluateRule(rule: Rule, ours: SideResult, theirs: SideResult): 
       }
       const left = asList(a).map(normalizeText)
       const right = asList(b).map(normalizeText)
-      const pass = right.length > 0 && left.length === right.length && left.every((text, i) => text === right[i])
+      const pass = right.join('').length > 0 && left.length === right.length && left.every((text, i) => text === right[i])
       return { pass, detail: `去空白後 ${pass ? '相同' : '不同'}（我方 ${left.join('').length} 字、對方 ${right.join('').length} 字）` }
     }
     case 'field_presence': {
