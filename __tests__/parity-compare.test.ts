@@ -73,6 +73,14 @@ describe('evaluateRule', () => {
     expect(evaluateRule(rule, ok({ f: ['1', '2'] }), ok({ g: ['2', '1'] })).pass).toBe(false)
   })
 
+  it('field_equal fails when array items are missing the compared field', () => {
+    const hollow = { results: [{}, {}] }
+    for (const id of ['Q1-court_level', 'A-勞基法24-status']) {
+      const rule = CASES.find((c) => c.id === id)!.rule
+      expect(evaluateRule(rule, ok(hollow), ok(hollow)).pass).toBe(false)
+    }
+  })
+
   it('fails when our call returned an error', () => {
     const rule = { kind: 'field_equal', ours: 'f', theirs: 'f' } as const
     const result = evaluateRule(rule, failed({ error: { code: 'source_unavailable' } }), ok({ f: 1 }))
