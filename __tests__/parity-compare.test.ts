@@ -35,6 +35,18 @@ describe('evaluateRule', () => {
     expect(evaluateRule(rule, ok({ t: '第184條因過失' }), ok({ t: '第184條因故意' })).pass).toBe(false)
   })
 
+  it('exact text_norm fails when both sides are empty strings', () => {
+    for (const id of ['Q5-main_text', 'Q5-reasoning', 'C-748-main_text']) {
+      const rule = CASES.find((c) => c.id === id)!.rule
+      expect(evaluateRule(rule, ok({ main_text: '', reasoning: '' }), ok({ main_text: '', reasoning: '' })).pass).toBe(false)
+    }
+  })
+
+  it('exact text_norm fails when both sides are articles: [{}]', () => {
+    const rule = { kind: 'text_norm', ours: 'articles[].content', theirs: 'articles[].content' } as const
+    expect(evaluateRule(rule, ok({ articles: [{}] }), ok({ articles: [{}] })).pass).toBe(false)
+  })
+
   it('text_norm with a similarity threshold compares character similarity', () => {
     const rule = { kind: 'text_norm', ours: 't', theirs: 't', similarity: 0.98 } as const
     const base = '甲'.repeat(200)
@@ -124,5 +136,11 @@ describe('Q2 known judgment', () => {
   })
   it('preserves legitimate empty-set equality', () => {
     expect(evaluateRule({ kind: 'id_set', ours: 'a', theirs: 'b', min: 'all' }, ok({ a: [] }), ok({ b: [] })).pass).toBe(true)
+  })
+
+  it('rejects a blank id mixed with a valid id even when the other side has only the valid id', () => {
+    const rule = { kind: 'id_set', ours: 'a', theirs: 'b', min: 'all' } as const
+    expect(evaluateRule(rule, ok({ a: ['A', ''] }), ok({ b: ['A'] })).pass).toBe(false)
+    expect(evaluateRule(rule, ok({ a: ['A'] }), ok({ b: ['A', ''] })).pass).toBe(false)
   })
 })
