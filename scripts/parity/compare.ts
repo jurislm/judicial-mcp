@@ -151,7 +151,7 @@ export function evaluateRule(rule: Rule, ours: SideResult, theirs: SideResult): 
       }
       const left = asList(a).map(normalizeText)
       const right = asList(b).map(normalizeText)
-      const pass = right.join('').length > 0 && left.length === right.length && left.every((text, i) => text === right[i])
+      const pass = right.length > 0 && right.every((text) => text.length > 0) && left.length === right.length && left.every((text, i) => text === right[i])
       return { pass, detail: `去空白後 ${pass ? '相同' : '不同'}（我方 ${left.join('').length} 字、對方 ${right.join('').length} 字）` }
     }
     case 'field_presence': {
