@@ -47,6 +47,12 @@ describe('evaluateRule', () => {
     expect(evaluateRule(rule, ok({ articles: [{}] }), ok({ articles: [{}] })).pass).toBe(false)
   })
 
+  it('exact text_norm fails when an article slot is empty even if later content matches', () => {
+    const rule = { kind: 'text_norm', ours: 'articles[].content', theirs: 'articles[].content' } as const
+    const mixed = { articles: [{}, { content: '第185條內容' }] }
+    expect(evaluateRule(rule, ok(mixed), ok(mixed)).pass).toBe(false)
+  })
+
   it('text_norm with a similarity threshold compares character similarity', () => {
     const rule = { kind: 'text_norm', ours: 't', theirs: 't', similarity: 0.98 } as const
     const base = '甲'.repeat(200)
