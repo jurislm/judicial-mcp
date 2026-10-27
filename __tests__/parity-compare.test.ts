@@ -81,6 +81,17 @@ describe('evaluateRule', () => {
     }
   })
 
+  it('field_equal fails when one side is a scalar and the other an array', () => {
+    const rule = { kind: 'field_equal', ours: 'f', theirs: 'g' } as const
+    expect(evaluateRule(rule, ok({ f: 1 }), ok({ g: [1] })).pass).toBe(false)
+    expect(evaluateRule(rule, ok({ f: [1] }), ok({ g: 1 })).pass).toBe(false)
+  })
+
+  it('field_equal fails when both sides are empty objects', () => {
+    const rule = { kind: 'field_equal', ours: 'total_count', theirs: 'total_count' } as const
+    expect(evaluateRule(rule, ok({ total_count: {} }), ok({ total_count: {} })).pass).toBe(false)
+  })
+
   it('fails when our call returned an error', () => {
     const rule = { kind: 'field_equal', ours: 'f', theirs: 'f' } as const
     const result = evaluateRule(rule, failed({ error: { code: 'source_unavailable' } }), ok({ f: 1 }))

@@ -159,9 +159,11 @@ export function evaluateRule(rule: Rule, ours: SideResult, theirs: SideResult): 
       return { pass, detail: `我方 ${isEmpty(a) ? '空' : '有'}、對方 ${isEmpty(b) ? '空' : '有'}` }
     }
     case 'field_equal': {
+      const sameShape = Array.isArray(a) === Array.isArray(b)
+      const hasEmptyItem = [...asList(a), ...asList(b)].some(isEmpty)
       const left = asList(a).map(normalizeText)
       const right = asList(b).map(normalizeText)
-      const pass = right.length > 0 && right.every((text) => text.length > 0) && left.length === right.length && left.every((text, i) => text === right[i])
+      const pass = sameShape && !hasEmptyItem && right.length > 0 && right.every((text) => text.length > 0) && left.length === right.length && left.every((text, i) => text === right[i])
       return { pass, detail: `我方 ${preview(a)}；對方 ${preview(b)}` }
     }
   }
