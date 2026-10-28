@@ -422,6 +422,39 @@ describe('query_regulation', () => {
     expect(String(data.article_text).length).toBeLessThanOrEqual(30_000)
   })
 
+  test.each([
+    '※本法規部分或全部條文尚未生效，最後生效日期：未定',
+    '※本法規部分或全部條文尚未施行，最後生效日期： 未定',
+  ])('preserves an explicit pending warning with an undetermined date (%s)', async warning => {
+    const page = lawArticle
+      .replace('<div>公布日期： | 民國 115 年 08 月 17 日</div>', '')
+      .replace('<div>施行日期： | 民國 115 年 08 月 17 日</div>', `<div>生效狀態：${warning}</div>`)
+    queueLawResponse(lawSearch, page)
+
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(data).toMatchObject({
+      article_text: '民事，法律所未規定者，依習慣；\n無習慣者，依法理。',
+      truncated: false,
+      partial: true,
+      version: {
+        amendment_date: '2026-08-17',
+        promulgation_date: null,
+        effective_date: null,
+        effective_status: 'pending_or_mixed',
+      },
+    })
+  })
+
+  test('does not assert effective status when the source supplies no effective information', async () => {
+    queueLawResponse(lawSearch, lawArticle.replace('<div>施行日期： | 民國 115 年 08 月 17 日</div>', ''))
+
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(data).toMatchObject({
+      partial: true,
+      version: { effective_date: null, effective_status: 'unknown' },
+    })
+  })
+
   test('marks an undetermined effective date as unknown and partial', async () => {
     const page = lawArticle
       .replace('<div>施行日期： | 民國 115 年 08 月 17 日</div>', '<div>最後生效日期：未定</div>')

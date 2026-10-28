@@ -363,14 +363,14 @@ function parseArticle(html: string, url: URL, lawName: string, articleNumber: st
   if (!articleText) {
     throw new RegulationSourceError('regulation_article_not_found', url.href)
   }
+  const effectiveDate = dateForLabel(metadataText, ['施行日期', '生效日期'])
   const version: RegulationVersion = {
     amendment_date: dateForLabel(metadataText, ['修正日期', '修正日']),
     promulgation_date: dateForLabel(metadataText, ['公布日期', '發布日期']),
-    effective_date: dateForLabel(metadataText, ['施行日期', '生效日期']),
-    effective_status: /尚未生效|尚未施行|最後生效日期：未定/.test(metadataText) ? 'pending_or_mixed' : 'as_stated',
-  }
-  if (/最後生效日期：未定/.test(metadataText) && version.effective_date === null) {
-    version.effective_status = 'unknown'
+    effective_date: effectiveDate,
+    effective_status: /尚未生效|尚未施行/.test(metadataText)
+      ? 'pending_or_mixed'
+      : effectiveDate === null ? 'unknown' : 'as_stated',
   }
   return { text: articleText, version }
 }
