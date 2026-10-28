@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.3](https://github.com/jurislm/judicial-mcp/compare/v1.6.2...v1.6.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **statutes:** preserve explicit pending effective status ([#30](https://github.com/jurislm/judicial-mcp/issues/30)) ([e166014](https://github.com/jurislm/judicial-mcp/commit/e166014d2fedc9a4d45b89295d4156536748ef92))
+
 ## [1.6.2](https://github.com/jurislm/judicial-mcp/compare/v1.6.1...v1.6.2) (2026-10-17)
 
 
