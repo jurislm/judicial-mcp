@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "judicial-mcp",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Taiwan judicial judgments and regulations with official source evidence.",
   "author": {
     "name": "JurisLM",
