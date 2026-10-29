@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.1](https://github.com/jurislm/judicial-mcp/compare/v1.8.0...v1.8.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **readme:** clarify login requirements by tool ([19d2e25](https://github.com/jurislm/judicial-mcp/commit/19d2e259fd0f1e911b66ff510ed7675ba619f625))
+* **readme:** clarify tool login requirements ([ace2d89](https://github.com/jurislm/judicial-mcp/commit/ace2d89b53545e8be7c8817d59d2ff4c2d32022b))
+* **readme:** export login environment variables ([2c6a7af](https://github.com/jurislm/judicial-mcp/commit/2c6a7aff5983f02ca2791c672e744c465e9225bf))
+* **readme:** include login environment variables ([e9d52d4](https://github.com/jurislm/judicial-mcp/commit/e9d52d455ab37aa173e789e060bb0bba3e8ea587))
+
 ## [1.8.0](https://github.com/jurislm/judicial-mcp/compare/v1.7.0...v1.8.0) (2026-10-29)
 
 
