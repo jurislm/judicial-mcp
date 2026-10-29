@@ -8,7 +8,6 @@ import { expect, it } from 'vitest'
 it('packed CLI initializes and lists every tool without source or dependencies', async () => {
   const temporary = mkdtempSync(join(tmpdir(), 'judicial-runtime-'))
   try {
-    execFileSync('bun', ['run', 'build:runtime'], { stdio: 'pipe' })
     const archive = execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', temporary, '--json'], { encoding: 'utf8' })
     const [{ filename }] = JSON.parse(archive)
     execFileSync('tar', ['-xzf', join(temporary, filename), '-C', temporary])
