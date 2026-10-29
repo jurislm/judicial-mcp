@@ -28,8 +28,8 @@ MCP 用戶端可以列出全部工具，不需登入。依工具取得資料所�
 先在 Codex 啟動環境設定帳密；`auth_token` 和 `member_token` 會讀取這兩個環境變數：
 
 ```bash
-JUDICIAL_USER=your_username
-JUDICIAL_PASSWORD=your_password
+export JUDICIAL_USER=your_username
+export JUDICIAL_PASSWORD=your_password
 ```
 
 - `auth_token`：以司法院帳密取得裁判書 API Token。
