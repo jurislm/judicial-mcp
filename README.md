@@ -1,6 +1,6 @@
 # @jurislm/judicial-mcp
 
-MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus current regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
+MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus latest promulgated regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
 
 ## Public Judgment Search
 
@@ -37,9 +37,13 @@ Only an explicit no-matches response from the official site is returned as an em
 
 The tool resolves only a unique exact law-name match after normalizing whitespace and the common `台` / `臺` spelling. It returns candidates with `status: "ambiguous"` when the name does not resolve uniquely; it never chooses a fuzzy match. Article numbers use Arabic numerals and may include a hyphen, such as `1` or `1-1`.
 
-Successful results include the regulation name and official identifier, one article's text, the official page URL, the lookup URL, retrieval time, and version metadata. The official page supplies consolidated current text; this tool does not provide historical versions. Amendment, promulgation, and effective dates are returned as ISO dates when the official page states them. Missing dates are `null` and mark the result `partial`; a pending or mixed effective date is identified in `version.effective_status`. `source_version` is the published amendment date, falling back to the promulgation date.
+Successful results include the latest promulgated article text (`article_text_version: "latest_promulgated"`), official URLs, and law-level `version` metadata. Latest promulgated text can include amendments that have not taken effect. `status: "current"` identifies retrieval from the latest consolidated page, not a finding that the returned article is effective.
 
-Responses cap article text at 30,000 characters. `truncated` and `partial` are `true` when text is capped or required version details are missing. `cache.status` is `miss`, `hit`, `refreshed`, `revalidated`, or `not_cached`. A process-local least-recently-used cache holds at most 100 exact law/article lookups for 15 minutes. Set `refresh: true` to bypass the cache. Expired entries are looked up and scraped again through Firecrawl; if an upstream refresh fails, the tool returns an error and does not serve stale text as current.
+`article_effectiveness` separately evaluates the returned article version at `checked_at` (Taiwan date). Its `status` is `effective`, `not_yet_effective`, or `unknown`; `effective_date` is nullable. `reason` explains the decision and `basis` contains official source URLs and text excerpts. Decisions use the official law history and complete effective-status notes. Relative commencement dates and “effective from promulgation” clauses remain unknown unless the source provides an explicit supported calendar date. A current explicit pending notice can establish that the latest version is not yet effective without establishing its exact effective date. Unsupported conditions, partial-article commencement, conflicting or unavailable sources return `unknown`. An article absent from a pending warning is not presumed effective. A historical page containing the same text is not evidence of commencement. Pending latest text is not replaced with an unverified historical version; this tool does not supply a verified older effective text or decide which version applies to a case.
+
+Law-level amendment, promulgation, and effective dates remain ISO dates or `null`. Missing dates keep `partial: true`, even when article-level commencement is verified. Law-level pending warnings do not establish that the queried article is pending. `source_version` remains the law amendment date, falling back to promulgation date.
+
+Responses cap article text at 30,000 characters. `truncated` and `partial` are `true` when text is capped or required version details are missing. `cache.status` is `miss`, `hit`, `refreshed`, `revalidated`, or `not_cached`. A process-local least-recently-used cache holds at most 100 exact law/article lookups for 15 minutes. Set `refresh: true` to bypass the cache. Article decisions are revalidated across Taiwan midnight even before the 15-minute TTL expires. The additional official history request can increase latency; configure the MCP client with `tool_timeout_sec = 120`. Expired entries are looked up and scraped again through Firecrawl; if an upstream refresh fails, the tool returns an error and does not serve stale text as current.
 
 Upstream failures and unrecognized page changes are MCP errors with `error.code`, `error.message`, `error.source_url`, and `error.retrieved_at`. Confirmed no-match, abolished-law, and missing-article responses have distinct codes.
 
@@ -54,7 +58,7 @@ Upstream failures and unrecognized page changes are MCP errors with `error.code`
 - `fetch_judgment_text` — Get a judgment's full text by `case_id`, without a token
 
 ### Regulations (1 tool)
-- `query_regulation` — Get one current regulation article and official version metadata, without a token
+- `query_regulation` — Get one latest promulgated regulation article, its `article_effectiveness` result, and official version metadata, without a token
 
 ### Token-based Judgments (2 tools)
 - `list_judgments` — Get the judgment change list (requires `auth_token`)

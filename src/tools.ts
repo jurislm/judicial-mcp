@@ -250,7 +250,7 @@ export const TOOLS_CONFIG = {
 
   query_regulation: {
     name: 'query_regulation',
-    description: '依官方法規名稱與條號查詢全國法規資料庫現行條文，回傳版本日期與官方來源；不提供歷史版本。',
+    description: '依官方法規名稱與條號查詢最新公布條文，另以 article_effectiveness 回傳該條文版本的生效判斷與官方依據；資料不足回傳 unknown，不代表現行有效或個案適用版本。',
     inputSchema: {
       type: 'object',
       properties: {

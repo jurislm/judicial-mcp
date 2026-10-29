@@ -7,6 +7,7 @@ import {
   type RegulationCacheEntry,
 } from './regulation-cache.js'
 import { RegulationSourceError } from './source-error.js'
+import { resolveArticleEffectiveness, type ArticleEffectiveness } from './article-effectiveness.js'
 
 const BASE_URL = 'https://law.moj.gov.tw'
 const TERM_URL = new URL('/controls/GetTermList.ashx', BASE_URL)
@@ -35,6 +36,8 @@ interface RegulationResult {
   regulation_id?: string
   article_number?: string
   article_text?: string
+  article_text_version?: 'latest_promulgated'
+  article_effectiveness?: ArticleEffectiveness
   version?: RegulationVersion
   candidates?: Array<{ regulation_name: string; regulation_id: string }>
   source_url: string
@@ -73,6 +76,7 @@ function isRegulationResult(value: unknown): value is RegulationResult {
   if (!isRecord(value.cache) || !isRecord(value.version)) return false
   const cacheStatus = value.cache.status
   const effectiveStatus = value.version.effective_status
+  if (!isRecord(value.article_effectiveness) || typeof value.article_effectiveness.checked_at !== 'string') return false
   return typeof value.regulation_name === 'string' &&
     typeof value.regulation_id === 'string' &&
     typeof value.article_number === 'string' &&
@@ -383,6 +387,7 @@ function makeResult(
   searchSourceUrl: URL,
   retrievedAt: string,
   cacheStatus: RegulationResult['cache']['status'],
+  articleEffectiveness: ArticleEffectiveness,
 ): RegulationResult {
   const truncated = article.text.length > MAX_ARTICLE_LENGTH
   const missingDates = article.version.amendment_date === null ||
@@ -394,6 +399,8 @@ function makeResult(
     regulation_id: candidate.identifier,
     article_number: articleNumber,
     article_text: text,
+    article_text_version: 'latest_promulgated',
+    article_effectiveness: articleEffectiveness,
     version: article.version,
     source_url: sourceUrl.href,
     search_source_url: searchSourceUrl.href,
@@ -481,6 +488,21 @@ async function lookupRegulation(lawName: string): Promise<{ resolution: Candidat
   return { resolution: resolveCandidate(directCandidates, lawName, directURL), lookupURL: directURL }
 }
 
+function taiwanDate(value: number | string): string {
+  return new Date(new Date(value).getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+async function articleEffectiveness(html: string, articleText: string, candidate: RegulationCandidate, articleNumber: string, checkedAt: string): Promise<ArticleEffectiveness> {
+  const url = detailUrl(candidate.identifier)
+  url.pathname = '/LawClass/LawHistory.aspx'
+  try {
+    const historyHtml = await fetchHtml(url)
+    return resolveArticleEffectiveness({ historyHtml, articleHtml: html, articleText, lawName: candidate.name, articleNumber, checkedAt, sourceUrl: url.href })
+  } catch {
+    return { status: 'unknown', effective_date: null, reason: '無法取得或驗證官方沿革，無法確認本條文版本是否生效。', basis: [], checked_at: checkedAt }
+  }
+}
+
 export async function queryRegulation(args: Record<string, unknown>): Promise<RegulationResult> {
   const lawName = validateName(args.lawName)
   const articleNumber = validateArticleNumber(args.articleNumber)
@@ -494,12 +516,13 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
     else deleteRegulationCacheEntry(key)
   }
 
-  if (cached && cached.expiresAt > now && !refresh) {
+  const sameDate = cached?.value.article_effectiveness && taiwanDate(cached.value.article_effectiveness.checked_at) === taiwanDate(now)
+  if (cached && cached.expiresAt > now && sameDate && !refresh) {
     return resultWithCacheStatus(cached.value, 'hit')
   }
 
   if (refresh) deleteRegulationCacheEntry(key)
-  if (cached && cached.expiresAt <= now && !refresh) {
+  if (cached && (cached.expiresAt <= now || !sameDate) && !refresh) {
     const checkedAt = new Date().toISOString()
     try {
       const lookup = await lookupRegulation(lawName)
@@ -512,7 +535,8 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
       const detailURL = detailUrl(candidate.identifier)
       const html = await fetchHtml(detailURL)
       const article = parseArticle(html, detailURL, candidate.name, articleNumber)
-      const result = makeResult(candidate, articleNumber, article, detailURL, lookupURL, checkedAt, 'revalidated')
+      const effectiveness = await articleEffectiveness(html, article.text, candidate, articleNumber, checkedAt)
+      const result = makeResult(candidate, articleNumber, article, detailURL, lookupURL, checkedAt, 'revalidated', effectiveness)
       setRegulationCacheEntry(key, { value: result }, now)
       return result
     } catch (error: unknown) {
@@ -530,7 +554,8 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
   const html = await fetchHtml(articleURL)
   const article = parseArticle(html, articleURL, candidate.name, articleNumber)
   const retrievedAt = new Date().toISOString()
-  const result = makeResult(candidate, articleNumber, article, articleURL, lookupURL, retrievedAt, refresh ? 'refreshed' : 'miss')
+  const effectiveness = await articleEffectiveness(html, article.text, candidate, articleNumber, retrievedAt)
+  const result = makeResult(candidate, articleNumber, article, articleURL, lookupURL, retrievedAt, refresh ? 'refreshed' : 'miss', effectiveness)
   setRegulationCacheEntry(key, { value: result }, now)
   return result
 }
