@@ -141,6 +141,10 @@ function revisionScopes(text: string): { complete: boolean; fullText: boolean; a
     }
     actions.push({ action: match[1] ?? '', list: scope[1] ?? '', span: match[0] + scope[0] })
   }
+  for (const match of text.matchAll(/公布第([^條；。]+)條修正條文/g)) {
+    if (!COMPLETE_LIST.test(match[1] ?? '')) complete = false
+    else actions.push({ action: '修正', list: match[1] ?? '', span: match[0] })
+  }
   return { complete: complete && actions.length > 0, fullText, actions }
 }
 

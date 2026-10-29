@@ -145,3 +145,13 @@ describe('resolveArticleEffectiveness', () => {
     expect(resolve('184', undefined, { time: 'invalid' }).status).toBe('unknown')
   })
 })
+
+it('does not let an official commencement-only decree for another article block proven evidence', () => {
+  const decree = '中華民國九十七年十月二十二日總統華總一義字第09700216301號令公布第22條修正條文定自九十八年一月一日施行'
+  expect(resolve('184', [newest, decree, debt], { memo: warning })).toMatchObject({ status: 'effective', effective_date: '2000-05-05' })
+})
+
+it('uses the scope of a commencement-only decree when it targets the requested article', () => {
+  const decree = '中華民國九十七年十月二十二日總統華總一義字第09700216301號令公布第184條修正條文定自九十八年一月一日施行'
+  expect(resolve('184', [decree, debt])).toMatchObject({ status: 'effective', effective_date: '2009-01-01' })
+})
