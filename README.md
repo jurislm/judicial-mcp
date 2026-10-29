@@ -1,6 +1,6 @@
 # @jurislm/judicial-mcp
 
-MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus current regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
+MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus latest promulgated regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
 
 ## Public Judgment Search
 
@@ -58,7 +58,7 @@ Upstream failures and unrecognized page changes are MCP errors with `error.code`
 - `fetch_judgment_text` — Get a judgment's full text by `case_id`, without a token
 
 ### Regulations (1 tool)
-- `query_regulation` — Get one current regulation article and official version metadata, without a token
+- `query_regulation` — Get one latest promulgated regulation article, its `article_effectiveness` result, and official version metadata, without a token
 
 ### Token-based Judgments (2 tools)
 - `list_judgments` — Get the judgment change list (requires `auth_token`)
