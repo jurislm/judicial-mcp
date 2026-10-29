@@ -162,3 +162,8 @@ it.each([
 ])('rejects partially recognized commencement decree scopes: %s', clause => {
   expect(resolve('184', [`中華民國一百十五年八月十七日總統令${clause}`, debt]).status).toBe('unknown')
 })
+
+it('keeps unrelated recognized amendments with separate scoped commencement notes', () => {
+  const row = '中華民國九十七年五月二十三日總統華總一義字第09700059171號令修正公布第14、15、22條條文；增訂第15-1、15-2條條文；第14～15-2條修正條文，自公布後一年六個月（九十八年十一月二十三日）施行；第22條修正條文施行日期，以命令定之'
+  expect(resolve('184', [newest, row, debt], { memo: warning })).toMatchObject({ status: 'effective', effective_date: '2000-05-05' })
+})
