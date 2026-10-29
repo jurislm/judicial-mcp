@@ -29,7 +29,7 @@
     "start": "bun src/index.ts",
     "dev": "bun src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "test": "bun run build:runtime && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint --max-warnings=0",
