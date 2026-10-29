@@ -148,7 +148,7 @@ function withoutOtherExceptions(text: string): string | null {
 
 function explicitEffectiveDate(text: string): string | null {
   const dates = Array.from(text.matchAll(new RegExp(`(?:並)?自(${DATE_PATTERN})施行`, 'g')))
-  if (dates.length !== 1) return null
+  if (dates.length !== 1 || !new RegExp(`自${DATE_PATTERN}施行[。；]?$`).test(text)) return null
   return parseDate(dates[0]?.[1] ?? '')
 }
 
@@ -163,6 +163,12 @@ export function resolveArticleEffectiveness(input: ResolverInput): ArticleEffect
   if (!/^\d+(?:-\d+)?$/.test(input.articleNumber)) return unknown('條號格式無法辨識。')
   const article = load(input.articleHtml)
   const history = load(input.historyHtml)
+  const deletedText = article('.law-reg-content > .row').toArray().some(row => {
+    const number = compact(article(row).find('.col-no').text())
+    const text = compact(article(row).find('.col-data').text())
+    return number === `第${input.articleNumber}條` && /^[（(]?刪除[）)]?$/.test(text)
+  })
+  if (deletedText) return unknown('官方條文內容標示刪除，無法視為有效條文。')
   const articleMetadata = metadata(article)
   const historyMetadata = metadata(history)
   const lawName = compact(input.lawName)
