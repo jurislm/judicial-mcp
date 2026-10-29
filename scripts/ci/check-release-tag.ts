@@ -1,5 +1,3 @@
-// JUR-813：npm-release.yml 的 verify 步驟。tag 事件比對 CI_COMMIT_TAG；manual 事件用來補發既有 tag 的版本，
-// 要求該 tag 存在，而且會打包進 npm 的檔案自 tag 起沒變，確保發出去的內容就是那個 tag。
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
@@ -28,9 +26,8 @@ export function checkRelease(version: string, context: ReleaseContext): void {
   throw new Error(`npm release only runs on tag or manual events; received ${context.event}`)
 }
 
-// npm 一定會帶 package.json／README／LICENSE；types/ 由 tsconfig.json 和鎖定的 TypeScript 版本產生。
 export function releaseInputs(files: string[]): string[] {
-  return ['package.json', 'README.md', 'LICENSE', 'tsconfig.json', 'bun.lock', ...files]
+  return ['package.json', 'README.md', 'LICENSE', 'tsconfig.json', 'bun.lock', 'src', 'bin', ...files]
 }
 
 function git(args: string[]): string {

@@ -1,21 +1,19 @@
-// JUR-766：Woodpecker 上自動合併 release-please 開的 release PR。
-// 改寫自 coolify-plugin 的 scripts/ci/release-pr-auto-merge.ts，差異：
-// - 只允許 release-please node 型別會動的 3 個檔（manifest、CHANGELOG.md、package.json）。
-// - 必要檢查改讀 GitHub Actions check runs（lint、test、secret-scan），不是 Woodpecker commit status。
-// - 不依賴 Bun 專屬 API，Vitest（Node）可直接測。
-
 export const REPOSITORY = 'jurislm/judicial-mcp'
 export const BASE_BRANCH = 'main'
 export const RELEASE_BRANCH = 'release-please--branches--main--components--judicial-mcp'
 export const RELEASE_AUTHOR = 'terry90918'
 const RELEASE_BODY_START = ':robot: I have created a release *beep* *boop*'
-const RELEASE_BODY_FOOTER =
-  'This PR was generated with [Release Please](https://github.com/googleapis/release-please).'
+const RELEASE_BODY_FOOTER = 'This PR was generated with [Release Please](https://github.com/googleapis/release-please).'
 const RELEASE_TITLE = /^chore\(main\): release ((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/
-export const RELEASE_FILES = ['.release-please-manifest.json', 'CHANGELOG.md', 'package.json'] as const
+export const RELEASE_FILES = [
+  '.release-please-manifest.json',
+  'CHANGELOG.md',
+  'package.json',
+  'plugin.json',
+  '.codex-plugin/plugin.json',
+] as const
 export const REQUIRED_CHECK_RUNS = ['lint', 'test', 'secret-scan'] as const
 const GITHUB_API = 'https://api.github.com'
-// 120 × 5 秒 = 10 分鐘：涵蓋 update branch 後 GitHub Actions 重跑 lint／test／secret-scan 的排隊時間。
 const DEFAULT_ATTEMPTS = 120
 const DEFAULT_POLL_DELAY_MS = 5_000
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
@@ -38,9 +36,7 @@ export interface AutoMergeOptions {
   apiBaseUrl?: string
 }
 
-export type AutoMergeResult =
-  | { status: 'no-op' }
-  | { status: 'merged'; pullNumber: number; mergeSha: string }
+export type AutoMergeResult = { status: 'no-op' } | { status: 'merged'; pullNumber: number; mergeSha: string }
 
 export interface ReleaseCandidate {
   number: number
@@ -55,6 +51,10 @@ export interface ReleaseContents {
   headManifestText: string
   basePackageText: string
   headPackageText: string
+  basePluginText: string
+  headPluginText: string
+  baseCodexPluginText: string
+  headCodexPluginText: string
   baseChangelogText: string
   headChangelogText: string
 }
@@ -167,7 +167,7 @@ export function validateChangedFiles(value: unknown): void {
     })
     .sort()
   if (filenames.join('\n') !== [...RELEASE_FILES].sort().join('\n')) {
-    throw new Error('release PR must change exactly the three allowed files')
+    throw new Error('release PR must change exactly the five allowed files')
   }
 }
 
@@ -195,6 +195,19 @@ export function validateReleaseContents(contents: ReleaseContents): void {
   const { version: _headVersion, ...headPackageRest } = headPackage
   if (!equalJson(basePackageRest, headPackageRest)) throw new Error('package fields other than version changed')
 
+  for (const [label, baseText, headText] of [
+    ['plugin', contents.basePluginText, contents.headPluginText],
+    ['Codex plugin', contents.baseCodexPluginText, contents.headCodexPluginText],
+  ]) {
+    const basePlugin = parseJsonObject(baseText, `base ${label}`)
+    const headPlugin = parseJsonObject(headText, `head ${label}`)
+    if (basePlugin.version !== baseVersion) throw new Error(`manifest and ${label} base versions must match`)
+    if (headPlugin.version !== contents.version) throw new Error(`${label} version does not match the release PR title`)
+    const { version: _basePluginVersion, ...basePluginRest } = basePlugin
+    const { version: _headPluginVersion, ...headPluginRest } = headPlugin
+    if (!equalJson(basePluginRest, headPluginRest)) throw new Error(`${label} fields other than version changed`)
+  }
+
   const prefix = '# Changelog\n\n'
   if (!contents.baseChangelogText.startsWith(prefix) || !contents.headChangelogText.startsWith(prefix)) {
     throw new Error('CHANGELOG must preserve the standard header')
@@ -210,7 +223,6 @@ export function validateReleaseContents(contents: ReleaseContents): void {
   }
 }
 
-// GitHub Actions check runs → 必要檢查狀態。任一失敗即丟錯；有缺或未完成回 pending。
 export function evaluateRequiredChecks(value: unknown): CheckState {
   const record = requiredRecord(value, 'check runs')
   const runs = record.check_runs
@@ -250,7 +262,8 @@ function nonNegativeInteger(value: number | undefined, fallback: number, label: 
 
 function contentText(value: unknown, label: string): string {
   const content = requiredRecord(value, label)
-  if (content.type !== 'file' || content.encoding !== 'base64') throw new Error(`${label} is not a base64 file response`)
+  if (content.type !== 'file' || content.encoding !== 'base64')
+    throw new Error(`${label} is not a base64 file response`)
   const encoded = requiredString(content.content, `${label}.content`).replaceAll('\n', '')
   if (Buffer.from(encoded, 'base64').toString('base64') !== encoded) {
     throw new Error(`${label} content is not valid base64`)
@@ -339,7 +352,6 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
         `release PR base SHA does not match CI commit (pr=${detail.baseSha}, ci=${expectedBaseSha}, relation=${relation})`,
       )
     }
-    // release-please 回報 "PR remained the same" 時不會推 release 分支，PR base 就停在舊的 main。
     logger.log(`Release PR #${detail.number} base is behind ${expectedBaseSha}; updating its branch.`)
     await githubRequest(`/repos/${REPOSITORY}/pulls/${detail.number}/update-branch`, {
       method: 'PUT',
@@ -372,15 +384,29 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
       await githubRequest(`/repos/${REPOSITORY}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`),
       `${path}@${ref}`,
     )
-  const [baseManifestText, headManifestText, basePackageText, headPackageText, baseChangelogText, headChangelogText] =
-    await Promise.all([
-      getFile('.release-please-manifest.json', detail.baseSha),
-      getFile('.release-please-manifest.json', detail.headSha),
-      getFile('package.json', detail.baseSha),
-      getFile('package.json', detail.headSha),
-      getFile('CHANGELOG.md', detail.baseSha),
-      getFile('CHANGELOG.md', detail.headSha),
-    ])
+  const [
+    baseManifestText,
+    headManifestText,
+    basePackageText,
+    headPackageText,
+    baseChangelogText,
+    headChangelogText,
+    basePluginText,
+    headPluginText,
+    baseCodexPluginText,
+    headCodexPluginText,
+  ] = await Promise.all([
+    getFile('.release-please-manifest.json', detail.baseSha),
+    getFile('.release-please-manifest.json', detail.headSha),
+    getFile('package.json', detail.baseSha),
+    getFile('package.json', detail.headSha),
+    getFile('CHANGELOG.md', detail.baseSha),
+    getFile('CHANGELOG.md', detail.headSha),
+    getFile('plugin.json', detail.baseSha),
+    getFile('plugin.json', detail.headSha),
+    getFile('.codex-plugin/plugin.json', detail.baseSha),
+    getFile('.codex-plugin/plugin.json', detail.headSha),
+  ])
   validateReleaseContents({
     version: detail.version,
     baseManifestText,
@@ -389,6 +415,10 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
     headPackageText,
     baseChangelogText,
     headChangelogText,
+    basePluginText,
+    headPluginText,
+    baseCodexPluginText,
+    headCodexPluginText,
   })
 
   let checks: CheckState = 'pending'
