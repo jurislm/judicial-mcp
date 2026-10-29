@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.2](https://github.com/jurislm/judicial-mcp/compare/v1.8.1...v1.8.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **statutes:** bound lookup attempts and retry aborted streams ([c792016](https://github.com/jurislm/judicial-mcp/commit/c792016ec67d67c907cf67b4f2ac1b70ba41ae3c))
+* **statutes:** retry transient regulation name lookup once ([b4d0942](https://github.com/jurislm/judicial-mcp/commit/b4d094271689d190a3b6321daea4554680963318))
+* **statutes:** retry transient regulation name lookup once ([e64fbae](https://github.com/jurislm/judicial-mcp/commit/e64fbae0d814032f02966b9052cb60497aa3bc6e))
+
 ## [1.8.1](https://github.com/jurislm/judicial-mcp/compare/v1.8.0...v1.8.1) (2026-10-29)
 
 
