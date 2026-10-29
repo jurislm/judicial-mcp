@@ -492,12 +492,12 @@ function taiwanDate(value: number | string): string {
   return new Date(new Date(value).getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-async function articleEffectiveness(html: string, candidate: RegulationCandidate, articleNumber: string, checkedAt: string): Promise<ArticleEffectiveness> {
+async function articleEffectiveness(html: string, articleText: string, candidate: RegulationCandidate, articleNumber: string, checkedAt: string): Promise<ArticleEffectiveness> {
   const url = detailUrl(candidate.identifier)
   url.pathname = '/LawClass/LawHistory.aspx'
   try {
     const historyHtml = await fetchHtml(url)
-    return resolveArticleEffectiveness({ historyHtml, articleHtml: html, lawName: candidate.name, articleNumber, checkedAt, sourceUrl: url.href })
+    return resolveArticleEffectiveness({ historyHtml, articleHtml: html, articleText, lawName: candidate.name, articleNumber, checkedAt, sourceUrl: url.href })
   } catch {
     return { status: 'unknown', effective_date: null, reason: '無法取得或驗證官方沿革，無法確認本條文版本是否生效。', basis: [], checked_at: checkedAt }
   }
@@ -535,7 +535,7 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
       const detailURL = detailUrl(candidate.identifier)
       const html = await fetchHtml(detailURL)
       const article = parseArticle(html, detailURL, candidate.name, articleNumber)
-      const effectiveness = await articleEffectiveness(html, candidate, articleNumber, checkedAt)
+      const effectiveness = await articleEffectiveness(html, article.text, candidate, articleNumber, checkedAt)
       const result = makeResult(candidate, articleNumber, article, detailURL, lookupURL, checkedAt, 'revalidated', effectiveness)
       setRegulationCacheEntry(key, { value: result }, now)
       return result
@@ -554,7 +554,7 @@ export async function queryRegulation(args: Record<string, unknown>): Promise<Re
   const html = await fetchHtml(articleURL)
   const article = parseArticle(html, articleURL, candidate.name, articleNumber)
   const retrievedAt = new Date().toISOString()
-  const effectiveness = await articleEffectiveness(html, candidate, articleNumber, retrievedAt)
+  const effectiveness = await articleEffectiveness(html, article.text, candidate, articleNumber, retrievedAt)
   const result = makeResult(candidate, articleNumber, article, articleURL, lookupURL, retrievedAt, refresh ? 'refreshed' : 'miss', effectiveness)
   setRegulationCacheEntry(key, { value: result }, now)
   return result

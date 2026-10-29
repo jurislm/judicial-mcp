@@ -17,10 +17,11 @@ function history(rows: string[], name = '民法', date = revision) {
   return metadata(name, date) + `<div class="law-history">${rows.map(row => `<div class="row"><div class="col-data">${row}</div></div>`).join('')}</div>`
 }
 
-function resolve(articleNumber: string, rows = [newest, debt, original], options: { memo?: string; time?: string; historyName?: string; historyDate?: string; articleText?: string } = {}) {
+function resolve(articleNumber: string, rows = [newest, debt, original], options: { memo?: string; time?: string; historyName?: string; historyDate?: string; articleText?: string; statusWarning?: string } = {}) {
   return resolveArticleEffectiveness({
     historyHtml: history(rows, options.historyName, options.historyDate),
-    articleHtml: metadata('民法', revision, options.memo ?? '') + `<div class="law-reg-content"><div class="row"><div class="col-no">第 ${articleNumber} 條</div><div class="col-data">${options.articleText ?? '條文內容'}</div></div></div>`,
+    articleHtml: metadata('民法', revision, options.memo ?? '') + (options.statusWarning ? `<table><tr id="VaildState"><td>${options.statusWarning}</td></tr></table>` : '') + `<div class="law-reg-content"><div class="row"><div class="col-no">第 ${articleNumber} 條</div><div class="col-data">${options.articleText ?? '條文內容'}</div></div></div>`,
+    articleText: options.articleText ?? '條文內容',
     lawName: '民法', articleNumber, checkedAt: options.time ?? checkedAt, sourceUrl,
   })
 }
@@ -30,6 +31,11 @@ describe('resolveArticleEffectiveness', () => {
     const result = resolve('184', undefined, { memo: warning })
     expect(result).toMatchObject({ status: 'effective', effective_date: '2000-05-05', checked_at: checkedAt })
     expect(result.basis).toEqual(expect.arrayContaining([expect.objectContaining({ source_url: sourceUrl, text: expect.stringContaining('八十九年五月五日') })]))
+  })
+
+  it('distinguishes a decree document number from residual article scope', () => {
+    const row = '中華民國一百十五年八月十七日總統華總一義字第11500076161號令修正公布第184條條文；並自一百十五年九月一日施行'
+    expect(resolve('184', [row]).status).toBe('effective')
   })
 
   it('uses the complete current warning for the exact pending article', () => {
@@ -75,6 +81,40 @@ describe('resolveArticleEffectiveness', () => {
     ['ambiguous relative period', ['中華民國一百十五年八月十七日總統令修正公布第184條條文；並自主管機關公告後六個月施行']],
   ])('returns unknown for %s', (_label, rows) => {
     expect(resolve('184', rows).status).toBe('unknown')
+  })
+
+  it.each([
+    '行政院令修正發布第184條條文；施行日期另定之',
+    '總統令修正公布第183條及第184條條文；施行日期另定之',
+    '總統令修正公布第184至第186條條文；施行日期另定之',
+    '總統令修正公布第183～185～190條條文；並自一百十五年九月一日施行',
+    '總統令修正公布名稱及第184條條文；並自一百十六年一月一日施行',
+    '行政院令修正發布全文1300條；並自一百十五年九月一日施行',
+  ])('blocks older evidence when a newer revision scope is unsupported: %s', clause => {
+    expect(resolve('184', [`中華民國一百十五年八月十七日${clause}`, debt]).status).toBe('unknown')
+  })
+
+  it('rejects an unparsed Chinese article scope governing an effective date', () => {
+    expect(resolve('184', ['中華民國一百十五年八月十七日總統令修正公布第184、186條條文；第一百八十六條自一百十五年九月一日施行']).status).toBe('unknown')
+  })
+
+  it.each(['一百十五年二三月一日', '一一六年九月一日'])('rejects malformed Chinese date numerals: %s', date => {
+    expect(resolve('184', [`中華民國一百十五年八月十七日總統令修正公布第184條條文；並自${date}施行`]).status).toBe('unknown')
+  })
+
+  it.each([
+    '本法規全部條文尚未生效',
+    '本法規部分或全部條文尚未生效，最後生效日期：未定',
+    '本法規部分條文尚未生效<div class="law-vaildMemo">施行日期另定之</div>',
+    '本法規部分條文尚未生效<div class="law-vaildMemo">一百十五年八月十七日修正第一百八十六條施行日期另定之</div>',
+  ])('does not ignore a current warning whose exclusion scope cannot be proven: %s', statusWarning => {
+    expect(resolve('184', undefined, { statusWarning }).status).toBe('unknown')
+  })
+
+  it('returns unknown when a current pending note conflicts with an explicit whole-article date', () => {
+    const rows = ['中華民國一百十五年八月十七日總統令修正公布第184條條文；並自一百十五年九月一日施行']
+    const memo = '一百十五年八月十七日修正公布第184條施行日期，由行政院會同司法院另定之'
+    expect(resolve('184', rows, { memo }).status).toBe('unknown')
   })
 
   it('does not treat unchanged text or absent warnings as proof', () => {

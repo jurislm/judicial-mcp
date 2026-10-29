@@ -558,6 +558,14 @@ describe('article effectiveness integration', () => {
     expect(mismatched).toMatchObject({ article_effectiveness: { status: 'unknown' } })
   })
 
+  test('does not label deleted text in an alternative supported article layout effective', async () => {
+    const deletedPage = articlePage.slice(0, articlePage.indexOf('<div class="law-reg-content">')) + '<div class="law-article"><div class="article-number">第 1 條</div><div class="article-content">（刪除）</div></div></main>'
+    queueLawResponse(lawSearch, deletedPage)
+    queueHistory()
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(data).toMatchObject({ article_text: '（刪除）', article_effectiveness: { status: 'unknown' } })
+  })
+
   test('rechecks a cached decision across Taiwan midnight even before cache TTL expires', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-28T15:59:00.000Z'))

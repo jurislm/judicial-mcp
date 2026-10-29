@@ -11,6 +11,7 @@ export interface ArticleEffectiveness {
 interface ResolverInput {
   historyHtml: string
   articleHtml: string
+  articleText: string
   lawName: string
   articleNumber: string
   checkedAt: string
@@ -24,7 +25,10 @@ interface HistoryRecord {
 
 const NUMERALS = '〇零一二三四五六七八九十百千兩0-9'
 const DATE_PATTERN = `(?:中華民國|民國)?([${NUMERALS}]+)年([${NUMERALS}]+)月([${NUMERALS}]+)日`
-const ARTICLE_LIST = '([0-9]+(?:-[0-9]+)?(?:[、，,～~至][0-9]+(?:-[0-9]+)?)*)'
+const ARTICLE_NUMBER = '[0-9]+(?:-[0-9]+)?'
+const ARTICLE_RANGE = `${ARTICLE_NUMBER}(?:[～~至]${ARTICLE_NUMBER})?`
+const ARTICLE_LIST = `(${ARTICLE_RANGE}(?:[、，,]${ARTICLE_RANGE})*)`
+const COMPLETE_LIST = new RegExp(`^${ARTICLE_LIST}$`)
 
 function compact(text: string): string {
   return text.replace(/\s+/g, '')
@@ -47,7 +51,27 @@ function chineseNumber(text: string): number | null {
     digit = 0
     lastUnit = unit
   }
-  return result + digit
+  const number = result + digit
+  const canonical = chineseNumeral(number)
+  const normalized = text.replaceAll('〇', '零').replaceAll('兩', '二')
+  return normalized === canonical || normalized === canonical.replace('百一十', '百十') ? number : null
+}
+
+function chineseNumeral(number: number): string {
+  if (number === 0) return '零'
+  const names = '零一二三四五六七八九'
+  let result = ''
+  let remainder = number
+  let zero = false
+  for (const [unit, label] of [[1000, '千'], [100, '百'], [10, '十'], [1, '']] satisfies Array<[number, string]>) {
+    const digit = Math.floor(remainder / unit)
+    remainder %= unit
+    if (digit) {
+      result += (zero ? '零' : '') + names[digit] + label
+      zero = false
+    } else if (result && remainder) zero = true
+  }
+  return result.replace(/^一十/, '十')
 }
 
 function parseDate(text: string): string | null {
@@ -103,11 +127,32 @@ function referencesArticle(text: string, article: string): boolean {
     .some(match => includesArticle(match[1] ?? '', article))
 }
 
-function revisionAction(text: string, article: string): string | null {
-  for (const match of text.matchAll(new RegExp(`(修正|增訂|刪除|制定)(?:公布)?第${ARTICLE_LIST}條`, 'g'))) {
-    if (includesArticle(match[2] ?? '', article)) return match[1] ?? null
+function revisionScopes(text: string): { complete: boolean; fullText: boolean; actions: Array<{ action: string; list: string; span: string }> } {
+  const actions: Array<{ action: string; list: string; span: string }> = []
+  let complete = true
+  let fullText = false
+  for (const match of text.matchAll(/(修正|增訂|刪除|制定)(?!條文|之條文)/g)) {
+    const segment = text.slice(match.index + match[0].length).split(/[；。]/)[0] ?? ''
+    if (/全文/.test(segment)) fullText = true
+    const scope = segment.match(/^(?:公布|發布)?第([^條；。]+)條/)
+    if (!scope || !COMPLETE_LIST.test(scope[1] ?? '') || /第[^；。]*條/.test(segment.slice(scope[0].length))) {
+      complete = false
+      continue
+    }
+    actions.push({ action: match[1] ?? '', list: scope[1] ?? '', span: match[0] + scope[0] })
   }
-  return null
+  return { complete, fullText, actions }
+}
+
+function revisionAction(text: string, article: string): string | null {
+  const scope = revisionScopes(text)
+  if (!scope.complete) return null
+  return scope.actions.find(action => includesArticle(action.list, article))?.action ?? null
+}
+
+function completeNoteScope(note: string): boolean {
+  const scopes = Array.from(note.matchAll(/第([^；。]*?)條/g))
+  return scopes.length > 0 && scopes.every(scope => COMPLETE_LIST.test(scope[1] ?? '')) && !/其他|全部|部分|其餘|分別|但|(?<!刪)除/.test(note)
 }
 
 function historyRecords($: CheerioAPI): HistoryRecord[] {
@@ -127,14 +172,14 @@ function historyRecords($: CheerioAPI): HistoryRecord[] {
   return records
 }
 
-function warningNotes($: CheerioAPI): { pending: boolean; notes: string[] } {
+function warningNotes($: CheerioAPI): { pending: boolean; wholeLaw: boolean; notes: string[] } {
   const block = $('#VaildState')
   const notes: string[] = []
   block.find('.law-vaildMemo').each((_index, node) => {
     const html = $(node).html() ?? ''
     notes.push(...html.split(/<br\s*\/?\s*>/i).flatMap(part => compact(load(part).text()).split('。')).filter(Boolean))
   })
-  return { pending: /尚未(?:生效|施行)/.test(block.text()), notes }
+  return { pending: /尚未(?:生效|施行)/.test(block.text()), wholeLaw: /(?<!或)全部條文尚未(?:生效|施行)/.test(compact(block.text())), notes }
 }
 
 function withoutOtherExceptions(text: string): string | null {
@@ -163,12 +208,7 @@ export function resolveArticleEffectiveness(input: ResolverInput): ArticleEffect
   if (!/^\d+(?:-\d+)?$/.test(input.articleNumber)) return unknown('條號格式無法辨識。')
   const article = load(input.articleHtml)
   const history = load(input.historyHtml)
-  const deletedText = article('.law-reg-content > .row').toArray().some(row => {
-    const number = compact(article(row).find('.col-no').text())
-    const text = compact(article(row).find('.col-data').text())
-    return number === `第${input.articleNumber}條` && /^[（(]?刪除[）)]?$/.test(text)
-  })
-  if (deletedText) return unknown('官方條文內容標示刪除，無法視為有效條文。')
+  if (/^[（(]?刪除[）)]?$/.test(compact(input.articleText))) return unknown('官方條文內容標示刪除，無法視為有效條文。')
   const articleMetadata = metadata(article)
   const historyMetadata = metadata(history)
   const lawName = compact(input.lawName)
@@ -181,13 +221,14 @@ export function resolveArticleEffectiveness(input: ResolverInput): ArticleEffect
   if (!candidate) return unknown('官方沿革未提供可確認此條最新修正版本及施行日期的紀錄。')
   basis.push({ source_url: input.sourceUrl, text: candidate.text })
   if (records.some(record => record !== candidate && record.date === candidate.date && revisionAction(record.text, input.articleNumber) !== null && record.text !== candidate.text)) return unknown('同日有多筆涉及此條的修正紀錄，無法確認唯一施行依據。')
-  if (records.some(record => /(?:修正|制定)公布[^；。]*全文/.test(record.text) && (record.date ?? '') >= (candidate.date ?? ''))) return unknown('較新或同日全文修正的條文範圍無法確認，不能沿用較舊施行證據。')
+  if (records.some(record => (record.date ?? '') >= (candidate.date ?? '') && (!revisionScopes(record.text).complete || revisionScopes(record.text).fullText))) return unknown('較新或同日修正的完整條文範圍無法確認，不能沿用較舊施行證據。')
   if (revisionAction(candidate.text, input.articleNumber) === '刪除') return unknown('最新沿革刪除此條，不能將刪除日期視為條文生效日期。')
   const scoped = withoutOtherExceptions(candidate.text)
   if (!scoped || /(?:第[一二三四五六七八九十百\d]+(?:項|款|目)|但|(?<!刪)除|其餘|分別|涉及|部分|條件)/.test(scoped)) return unknown('沿革含分項施行、條件或未能解析的例外，無法確認全條生效狀態。')
-  const remainingScope = scoped.replace(new RegExp(`(?:修正|增訂|刪除|制定)(?:公布)?第${ARTICLE_LIST}條`, 'g'), '')
-  if (new RegExp(`第${ARTICLE_LIST}條`).test(remainingScope)) return unknown('施行說明另限定條號範圍，無法確認是否適用於所查全條。')
+  const remainingScope = revisionScopes(scoped).actions.reduce((remaining, action) => remaining.replace(action.span, ''), scoped)
+  if (/第[〇零一二三四五六七八九十百千兩\d、，,～~至及-]+條/.test(remainingScope)) return unknown('施行說明另限定條號範圍，無法確認是否適用於所查全條。')
   const warning = warningNotes(article)
+  if (warning.wholeLaw || (warning.pending && (!warning.notes.length || warning.notes.some(note => !completeNoteScope(note))))) return unknown('目前官方生效警示未提供可完整辨識的條號範圍，不能確認所查條文已排除於警示之外。')
   const targeted = warning.notes.filter(note => referencesArticle(note, input.articleNumber))
   if (targeted.length > 1) return unknown('目前生效警示有多筆涉及此條的說明，無法排除矛盾。')
   const note = targeted[0]
@@ -197,6 +238,8 @@ export function resolveArticleEffectiveness(input: ResolverInput): ArticleEffect
     if (/(?:第[一二三四五六七八九十百\d]+(?:項|款|目)|但|(?<!刪)除|其餘|分別|涉及|部分|條件)/.test(note)) return unknown('目前生效警示含分項或條件，無法確認全條生效狀態。')
     const undetermined = /施行日期，由行政院會同司法院另定之/.test(note)
     const delayed = /自公布(?:後[一二三四五六七八九十百\d]+個月|[一二三四五六七八九十百\d]+個月後)施行/.test(note)
+    const targetedException = candidate.text.split('；但').slice(1).some(exception => referencesArticle(exception, input.articleNumber))
+    if (explicitEffectiveDate(scoped) && !targetedException) return unknown('目前待施行警示與沿革全條明確施行日期矛盾。')
     if (warning.pending && (undetermined || delayed)) return result('not_yet_effective', null, undetermined ? '目前官方警示明確指出此條尚待另定施行日期。' : '目前官方警示明確列此條為延後施行；相對月數尚未換算為確定生效日。')
     return unknown('目前官方生效警示無法完整解析，不能據此判斷全條。')
   }
