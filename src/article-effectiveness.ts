@@ -141,7 +141,7 @@ function revisionScopes(text: string): { complete: boolean; fullText: boolean; a
     }
     actions.push({ action: match[1] ?? '', list: scope[1] ?? '', span: match[0] + scope[0] })
   }
-  return { complete, fullText, actions }
+  return { complete: complete && actions.length > 0, fullText, actions }
 }
 
 function revisionAction(text: string, article: string): string | null {
