@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "judicial": {
+      "type": "stdio",
+      "command": "bun",
+      "args": [
+        "x",
+        "@jurislm/judicial-mcp@latest"
+      ],
+      "env_vars": [
+        "FIRECRAWL_API_URL",
+        "FIRECRAWL_API_KEY",
+        "JUDICIAL_USER",
+        "JUDICIAL_PASSWORD"
+      ]
+    }
+  }
+}

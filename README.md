@@ -2,6 +2,38 @@
 
 MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus latest promulgated regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
 
+## Install as a Codex plugin
+
+This repository is a Codex marketplace containing the `judicial-mcp` plugin. It is a local stdio plugin, not a listing in OpenAI's universal public directory. Install Bun 1.3.14 or newer first and make `bun` available on the PATH used to launch Codex.
+
+```bash
+codex plugin marketplace add jurislm/judicial-mcp
+codex plugin add judicial-mcp@judicial-marketplace
+```
+
+The marketplace can also be selected in the Codex Plugins Directory after it is added. The plugin supplies its own MCP registration; do not add a duplicate `[mcp_servers.judicial]` entry. Its portable manifest is `plugin.json` with `mcp.json`; the `.codex-plugin/plugin.json` and `.mcp.json` compatibility files support Codex clients using that layout.
+
+The plugin launches the published npm CLI through `bun x @jurislm/judicial-mcp@latest`. Plugin-capable releases ship a prebuilt Bun bundle, so startup does not import runtime dependencies from the transient package's `node_modules`. The plugin identity/version is managed by Codex; the CLI resolves the current npm `latest` when a new server process starts. Restart the plugin after updating it. Source checkouts need `bun install --frozen-lockfile` and `bun run build:runtime` before packing.
+
+Public judgment search and full-text retrieval need no Judicial Yuan credentials. Regulation lookup additionally needs a working Firecrawl endpoint. For a local Docker Firecrawl service exposed on port 3002, launch a Codex CLI session with:
+
+```bash
+FIRECRAWL_API_URL=http://127.0.0.1:3002 codex
+```
+
+The Codex compatibility configuration forwards `FIRECRAWL_API_URL`, `FIRECRAWL_API_KEY`, `JUDICIAL_USER`, and `JUDICIAL_PASSWORD` from the process environment. Set a Firecrawl key only when that service requires one. Judicial Yuan credentials are optional and used only by the seven account/token-based tools; the three public tools do not require them. Never put secrets in either manifest or commit an environment file. A running desktop app does not inherit exports from a separate terminal; restart it from an environment providing the required variables. Other portable hosts must pass these environment variables to their stdio child process.
+
+After installation, check `codex plugin list --json` and `codex mcp list --json`, then call `search_judgments`, `fetch_judgment_text`, and `query_regulation`. An installed plugin is not proof of successful MCP initialization or upstream access. If a query times out or Firecrawl is unavailable, treat that query as unverified.
+
+To remove the plugin and its Codex-managed cache:
+
+```bash
+codex plugin remove judicial-mcp@judicial-marketplace
+codex plugin marketplace remove judicial-marketplace
+```
+
+npm/Bun download caches are managed separately by those package managers. Plugin removal does not remove Bun or your Docker Firecrawl service.
+
 ## Public Judgment Search
 
 `search_judgments` searches the Judicial Yuan's public judgment website. `fetch_judgment_text` retrieves the full text for a result. Both tools use the public website and do not require an API token or Judicial Yuan account.

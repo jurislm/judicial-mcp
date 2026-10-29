@@ -35,8 +35,8 @@ describe('checkRelease', () => {
 
 describe('releaseInputs', () => {
   it('除了 files，也涵蓋 npm 自動帶的檔案和 types/ 的建置輸入', () => {
-    expect(releaseInputs(['src', 'bin'])).toEqual(
-      expect.arrayContaining(['src', 'bin', 'package.json', 'README.md', 'LICENSE', 'tsconfig.json', 'bun.lock']),
+    expect(releaseInputs(['dist'])).toEqual(
+      expect.arrayContaining(['src', 'bin', 'package.json', 'README.md', 'LICENSE', 'tsconfig.json', 'bun.lock', 'dist']),
     )
   })
 })

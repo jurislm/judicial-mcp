@@ -1,0 +1,38 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "judicial-mcp",
+  "version": "1.7.0",
+  "description": "Taiwan judicial judgments and regulations with official source evidence.",
+  "author": {
+    "name": "JurisLM",
+    "url": "https://github.com/jurislm"
+  },
+  "homepage": "https://github.com/jurislm/judicial-mcp",
+  "repository": "https://github.com/jurislm/judicial-mcp",
+  "license": "MIT",
+  "keywords": [
+    "taiwan",
+    "law",
+    "judicial",
+    "mcp"
+  ],
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "Judicial MCP",
+        "shortDescription": "查詢台灣裁判與法規，保留官方來源。",
+        "longDescription": "Search public Taiwan judgments, retrieve full text, and check promulgated regulation articles with official evidence. Public tools require no Judicial Yuan token; platform-data tools require separate credentials.",
+        "developerName": "JurisLM",
+        "category": "Productivity",
+        "capabilities": [
+          "Read"
+        ],
+        "websiteURL": "https://github.com/jurislm/judicial-mcp",
+        "defaultPrompt": [
+          "查詢民法第184條，並說明單條生效判斷與官方依據。"
+        ]
+      }
+    }
+  }
+}

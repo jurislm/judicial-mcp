@@ -8,7 +8,26 @@
       "bump-patch-for-minor-pre-major": true,
       "include-component-in-tag": false,
       "include-v-in-tag": true,
-      "exclude-paths": [".github", ".woodpecker", ".claude", "__tests__", "scripts", "openspec"]
+      "exclude-paths": [
+        ".github",
+        ".woodpecker",
+        ".claude",
+        "__tests__",
+        "scripts",
+        "openspec"
+      ],
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": ".codex-plugin/plugin.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }
