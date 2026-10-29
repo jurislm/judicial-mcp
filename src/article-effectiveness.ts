@@ -141,9 +141,11 @@ function revisionScopes(text: string): { complete: boolean; fullText: boolean; a
     }
     actions.push({ action: match[1] ?? '', list: scope[1] ?? '', span: match[0] + scope[0] })
   }
-  for (const match of text.matchAll(/公布第([^條；。]+)條修正條文/g)) {
-    if (!COMPLETE_LIST.test(match[1] ?? '')) complete = false
-    else actions.push({ action: '修正', list: match[1] ?? '', span: match[0] })
+  if (text.includes('條修正條文')) {
+    const decree = text.match(new RegExp(`^${DATE_PATTERN}總統(?:華總一義字第[0-9]+號)?令公布第(?<articles>${ARTICLE_RANGE}(?:[、，,]${ARTICLE_RANGE})*)條修正條文定自${DATE_PATTERN}施行[。；]?$`))
+    const list = decree?.groups?.articles
+    if (!decree || !list) complete = false
+    else actions.push({ action: '修正', list, span: `公布第${list}條修正條文` })
   }
   return { complete: complete && actions.length > 0, fullText, actions }
 }
