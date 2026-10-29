@@ -22,13 +22,24 @@ it('packed CLI initializes and lists every tool without source or dependencies',
         stdio: ['pipe', 'pipe', 'pipe'],
       })
       const lines: string[] = []
+      const responseIds = new Set<number>()
       const output = createInterface({ input: child.stdout })
       let stderr = ''
       const timer = setTimeout(() => { child.kill(); reject(new Error(`Runtime timed out: ${stderr}`)) }, 15000)
       child.stderr.on('data', chunk => { stderr += chunk })
       output.on('line', line => {
         lines.push(line)
-        if (lines.length >= 2) {
+        try {
+          const message = JSON.parse(line)
+          if (message.id === 1 || message.id === 2) responseIds.add(message.id)
+        } catch (error) {
+          clearTimeout(timer)
+          output.close()
+          child.kill()
+          reject(error)
+          return
+        }
+        if (responseIds.size === 2) {
           clearTimeout(timer)
           output.close()
           child.kill()
@@ -38,7 +49,7 @@ it('packed CLI initializes and lists every tool without source or dependencies',
       child.on('error', error => { clearTimeout(timer); reject(error) })
       child.on('exit', code => {
         clearTimeout(timer)
-        if (lines.length < 2) reject(new Error(`Runtime exited ${code}: ${stderr}`))
+        if (responseIds.size < 2) reject(new Error(`Runtime exited ${code}: ${stderr}`))
       })
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'pack-test', version: '1' } } }) + '\n')
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
