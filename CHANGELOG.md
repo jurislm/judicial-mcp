@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/jurislm/judicial-mcp/compare/v1.6.3...v1.7.0) (2026-10-29)
+
+
+### Features
+
+* **statutes:** verify article commencement with official evidence (JUR-978) ([#32](https://github.com/jurislm/judicial-mcp/issues/32)) ([dabea42](https://github.com/jurislm/judicial-mcp/commit/dabea42c3f0f4d529455e74f93315c9056b8350e))
+
 ## [1.6.3](https://github.com/jurislm/judicial-mcp/compare/v1.6.2...v1.6.3) (2026-10-28)
 
 
