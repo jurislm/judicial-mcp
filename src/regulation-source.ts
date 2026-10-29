@@ -468,18 +468,30 @@ async function fetchHtml(url: URL): Promise<string> {
 }
 
 function isTransientLookupFailure(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'TimeoutError') return true
   if (!isRecord(error)) return false
   if (isRecord(error.response)) return [502, 503, 504].includes(Number(error.response.status))
-  return typeof error.code === 'string' && ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(error.code)
+  return typeof error.code === 'string' && (
+    ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(error.code) ||
+    (error.code === 'ERR_BAD_RESPONSE' && error.message === 'stream has been aborted')
+  )
 }
 
 async function fetchTermCandidates(name: string, url: URL): Promise<RegulationCandidate[]> {
   const options = termRequestOptions()
-  const request = () => axios.post<string>(
-    url.href,
-    new URLSearchParams({ term: name, type: 'ONEBAR' }).toString(),
-    options,
-  )
+  const request = async () => {
+    const signal = AbortSignal.timeout(15_000)
+    try {
+      return await axios.post<string>(
+        url.href,
+        new URLSearchParams({ term: name, type: 'ONEBAR' }).toString(),
+        { ...options, signal },
+      )
+    } catch (error: unknown) {
+      if (signal.aborted) throw signal.reason
+      throw error
+    }
+  }
   let response: AxiosResponse<string>
   try {
     response = await request()

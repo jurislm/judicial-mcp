@@ -97,7 +97,39 @@ describe('query_regulation', () => {
     queueLawResponse()
     const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1', refresh: true }))
     expect(data.article_text).toContain('民事')
-    expect(mockedAxios.post.mock.calls[0]).toEqual(mockedAxios.post.mock.calls[1])
+    expect(mockedAxios.post.mock.calls[0]?.slice(0, 2)).toEqual(mockedAxios.post.mock.calls[1]?.slice(0, 2))
+  })
+
+  test('retries an aborted response stream but not other bad responses', async () => {
+    mockedAxios.post.mockRejectedValueOnce(Object.assign(new Error('stream has been aborted'), { code: 'ERR_BAD_RESPONSE' }))
+    queueLawResponse()
+    expect(textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).status).toBe('current')
+    clearRegulationCache()
+    mockedAxios.post.mockReset().mockRejectedValueOnce(Object.assign(new Error('maxContentLength exceeded'), { code: 'ERR_BAD_RESPONSE' }))
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({ code: 'source_unavailable' })
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+  })
+
+  test('retries an overall deadline cancellation with a fresh signal', async () => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal)
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout(5))
+    try {
+      mockedAxios.post.mockImplementationOnce((_url, _body, options) => new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener?.('abort', () => reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' })))
+      }))
+      queueLawResponse()
+      const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+      expect(data.status).toBe('current')
+      expect(timeoutSpy).toHaveBeenNthCalledWith(1, 15_000)
+      expect(timeoutSpy).toHaveBeenNthCalledWith(2, 15_000)
+      const first = mockedAxios.post.mock.calls[0]?.[2]?.signal
+      const second = mockedAxios.post.mock.calls[1]?.[2]?.signal
+      expect(first?.aborted).toBe(true)
+      expect(second).toBeInstanceOf(AbortSignal)
+      expect(second).not.toBe(first)
+    } finally {
+      timeoutSpy.mockRestore()
+    }
   })
 
   test.each([502, 503, 504])('recovers a temporary name lookup HTTP %s', async status => {
