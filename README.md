@@ -1,159 +1,65 @@
 # @jurislm/judicial-mcp
 
-MCP (Model Context Protocol) server for Taiwan's Judicial Yuan public judgments and open data, plus latest promulgated regulations from the Ministry of Justice National Laws and Regulations Database. It provides 10 tools.
+台灣裁判與法規查詢 MCP 伺服器，提供 10 個工具。工具清單可直接讀取，不需登入。
 
-## Install as a Codex plugin
+## 安裝
 
-This repository is a Codex marketplace containing the `judicial-mcp` plugin. It is a local stdio plugin, not a listing in OpenAI's universal public directory. Install Bun 1.3.14 or newer first and make `bun` available on the PATH used to launch Codex.
+需要 Bun 1.3.14 以上版本，並確保 Codex 可在 `PATH` 找到 `bun`。
 
 ```bash
 codex plugin marketplace add jurislm/judicial-mcp
 codex plugin add judicial-mcp@judicial-marketplace
 ```
 
-The marketplace can also be selected in the Codex Plugins Directory after it is added. The plugin supplies its own MCP registration; do not add a duplicate `[mcp_servers.judicial]` entry. Its portable manifest is `plugin.json` with `mcp.json`; the `.codex-plugin/plugin.json` and `.mcp.json` compatibility files support Codex clients using that layout.
+外掛會自行註冊 MCP，請勿再新增重複的 `judicial` MCP 設定。更新後重新啟動外掛。
 
-The plugin launches the published npm CLI through `bun x @jurislm/judicial-mcp@latest`. Plugin-capable releases ship a prebuilt Bun bundle, so startup does not import runtime dependencies from the transient package's `node_modules`. The plugin identity/version is managed by Codex; the CLI resolves the current npm `latest` when a new server process starts. Restart the plugin after updating it. Source checkouts need `bun install --frozen-lockfile` and `bun run build:runtime` before packing.
+## 工具
 
-Public judgment search and full-text retrieval need no Judicial Yuan credentials. Regulation lookup additionally needs a working Firecrawl endpoint. For a local Docker Firecrawl service exposed on port 3002, launch a Codex CLI session with:
+MCP 用戶端可以列出全部工具，不需登入。依工具取得資料所需的條件如下。
 
-```bash
-FIRECRAWL_API_URL=http://127.0.0.1:3002 codex
-```
+### 不需司法院登入
 
-The Codex compatibility configuration forwards `FIRECRAWL_API_URL`, `FIRECRAWL_API_KEY`, `JUDICIAL_USER`, and `JUDICIAL_PASSWORD` from the process environment. Set a Firecrawl key only when that service requires one. Judicial Yuan credentials are optional and used only by the seven account/token-based tools; the three public tools do not require them. Never put secrets in either manifest or commit an environment file. A running desktop app does not inherit exports from a separate terminal; restart it from an environment providing the required variables. Other portable hosts must pass these environment variables to their stdio child process.
+- `search_judgments`：搜尋司法院公開裁判。
+- `fetch_judgment_text`：依 `case_id` 取得裁判全文。
+- `query_regulation`：查詢法規條文與單條生效資訊，需設定 Firecrawl 服務。
 
-After installation, check `codex plugin list --json` and `codex mcp list --json`, then call `search_judgments`, `fetch_judgment_text`, and `query_regulation`. An installed plugin is not proof of successful MCP initialization or upstream access. If a query times out or Firecrawl is unavailable, treat that query as unverified.
+### 需司法院登入
 
-To remove the plugin and its Codex-managed cache:
-
-```bash
-codex plugin remove judicial-mcp@judicial-marketplace
-codex plugin marketplace remove judicial-marketplace
-```
-
-npm/Bun download caches are managed separately by those package managers. Plugin removal does not remove Bun or your Docker Firecrawl service.
-
-## Public Judgment Search
-
-`search_judgments` searches the Judicial Yuan's public judgment website. `fetch_judgment_text` retrieves the full text for a result. Both tools use the public website and do not require an API token or Judicial Yuan account.
-
-Search accepts any combination of these filters (at least one is required):
-
-| Field | Meaning |
-|-------|---------|
-| `keyword` | Keyword in judgment text, up to 128 characters |
-| `court` | Official court name or code, up to 80 characters |
-| `year` | Decision year as a Gregorian or Minguo integer |
-| `caseNumber` | Case number, either digits or a full form such as `113年度訴字第1234號` |
-| `limit` | Results per page, 1–10; defaults to 5 |
-| `page` | Official result page, 1–50; defaults to 1 |
-| `offset` | Starting row within an official result page, 0–19; defaults to 0 |
-
-Each search result includes `case_id` (pass this as `caseId` to `fetch_judgment_text`), `case_number`, `date` (ISO date or `null`), `court`, `cause`, an optional `summary`, `source_url`, `search_source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, and `source_version`. The search response also includes `count`, `ambiguous`, `results`, `source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, `next_page`, `next_offset`, and `source_version`. Follow both `next_page` and `next_offset` to retrieve every result; `next_offset` may point to another batch on the same official page. An `ambiguous` case-number search returns its candidates for you to choose from rather than selecting one.
-
-The full-text response includes `case_id`, `date`, `full_text`, `source_url`, `retrieved_at`, `cache`, `truncated`, `partial`, and `source_version`. Text is capped at 40,000 characters; when that cap is reached, `truncated` and `partial` are `true`. `cache.status` is `not_cached`; `source_version` is `null` when the official source provides no version identifier.
-
-Only an explicit no-matches response from the official site is returned as an empty result. Upstream denial or failure, an unrecognized page, or a missing judgment is returned as an MCP error (`isError: true`) with `error.code`, `error.message`, `error.source_url`, and `error.retrieved_at`.
-
-## Regulation Lookup
-
-`query_regulation` looks up one article by law name and article number in the Ministry of Justice's [National Laws and Regulations Database](https://law.moj.gov.tw/). The official autocomplete lookup is tokenless. HTML pages are scraped only through a Firecrawl service configured with `FIRECRAWL_API_URL`; set `FIRECRAWL_API_KEY` when that service requires a key. If Firecrawl is unavailable, the tool returns a source error without a direct-HTTP HTML fallback.
-
-```json
-{
-  "lawName": "民法",
-  "articleNumber": "1"
-}
-```
-
-The tool resolves only a unique exact law-name match after normalizing whitespace and the common `台` / `臺` spelling. It returns candidates with `status: "ambiguous"` when the name does not resolve uniquely; it never chooses a fuzzy match. Article numbers use Arabic numerals and may include a hyphen, such as `1` or `1-1`.
-
-Successful results include the latest promulgated article text (`article_text_version: "latest_promulgated"`), official URLs, and law-level `version` metadata. Latest promulgated text can include amendments that have not taken effect. `status: "current"` identifies retrieval from the latest consolidated page, not a finding that the returned article is effective.
-
-`article_effectiveness` separately evaluates the returned article version at `checked_at` (Taiwan date). Its `status` is `effective`, `not_yet_effective`, or `unknown`; `effective_date` is nullable. `reason` explains the decision and `basis` contains official source URLs and text excerpts. Decisions use the official law history and complete effective-status notes. Relative commencement dates and “effective from promulgation” clauses remain unknown unless the source provides an explicit supported calendar date. A current explicit pending notice can establish that the latest version is not yet effective without establishing its exact effective date. Unsupported conditions, partial-article commencement, conflicting or unavailable sources return `unknown`. An article absent from a pending warning is not presumed effective. A historical page containing the same text is not evidence of commencement. Pending latest text is not replaced with an unverified historical version; this tool does not supply a verified older effective text or decide which version applies to a case.
-
-Law-level amendment, promulgation, and effective dates remain ISO dates or `null`. Missing dates keep `partial: true`, even when article-level commencement is verified. Law-level pending warnings do not establish that the queried article is pending. `source_version` remains the law amendment date, falling back to promulgation date.
-
-Responses cap article text at 30,000 characters. `truncated` and `partial` are `true` when text is capped or required version details are missing. `cache.status` is `miss`, `hit`, `refreshed`, `revalidated`, or `not_cached`. A process-local least-recently-used cache holds at most 100 exact law/article lookups for 15 minutes. Set `refresh: true` to bypass the cache. Article decisions are revalidated across Taiwan midnight even before the 15-minute TTL expires. The additional official history request can increase latency; configure the MCP client with `tool_timeout_sec = 120`. Expired entries are looked up and scraped again through Firecrawl; if an upstream refresh fails, the tool returns an error and does not serve stale text as current.
-
-Upstream failures and unrecognized page changes are MCP errors with `error.code`, `error.message`, `error.source_url`, and `error.retrieved_at`. Confirmed no-match, abolished-law, and missing-article responses have distinct codes.
-
-## Tools
-
-### Authentication (2 tools)
-- `auth_token` — Get authorization token for judgment API (uses `JUDICIAL_USER` / `JUDICIAL_PASSWORD` env vars by default)
-- `member_token` — Get member token for open data API (uses `JUDICIAL_USER` / `JUDICIAL_PASSWORD` env vars by default)
-
-### Public Judgments (2 tools)
-- `search_judgments` — Search public judgments without a token
-- `fetch_judgment_text` — Get a judgment's full text by `case_id`, without a token
-
-### Regulations (1 tool)
-- `query_regulation` — Get one latest promulgated regulation article, its `article_effectiveness` result, and official version metadata, without a token
-
-### Token-based Judgments (2 tools)
-- `list_judgments` — Get the judgment change list (requires `auth_token`)
-- `get_judgment` — Get judgment content by JID (requires `auth_token`)
-
-### Open Data (3 tools)
-- `list_categories` — List topic categories (requires `member_token`)
-- `list_resources` — List data sources for a category (requires `member_token` + `categoryNo`)
-- `download_file` — Download a data file with pagination support (requires `member_token` + `fileSetId`)
-
-## Setup
-
-### Environment Variables
-
-The public judgment search tools do not require credentials. These variables are used by the existing token-based judgment and open-data tools:
-
-```bash
-JUDICIAL_USER=your_username
-JUDICIAL_PASSWORD=your_password
-```
-
-Regulation lookup also needs a Firecrawl service base URL. The server appends `/v1/scrape` and sends raw-HTML scrape requests only for official Ministry of Justice pages. The key is read from the environment and is optional when Firecrawl is configured to allow keyless access. Use HTTPS when the configured service is remote; a key is sent over HTTP only to a loopback address.
-
-```bash
-FIRECRAWL_API_URL=https://your-firecrawl-host
-FIRECRAWL_API_KEY=your_service_key
-```
-
-### Usage with Claude Code (via bunx)
-
-Install Bun first, then add this stdio server to your MCP configuration (`.mcp.json` or `~/.claude/settings.json`). The public judgment tools work without credentials; regulation lookup needs the Firecrawl environment settings above:
-
-```json
-{
-  "mcpServers": {
-    "judicial": {
-      "command": "bunx",
-      "args": ["@jurislm/judicial-mcp@latest"],
-      "env": {
-        "FIRECRAWL_API_URL": "https://your-firecrawl-host",
-        "FIRECRAWL_API_KEY": "your_service_key"
-      }
-    }
-  }
-}
-```
-
-### Usage with Claude Code Plugin (jurislm-tools)
-
-If you use the [jurislm-tools](https://github.com/jurislm/jurislm-tools) Claude Code plugin, `jt:judicial` is included:
-
-```
-/plugin marketplace update jurislm-tools
-```
-
-Then set environment variables in `~/.zshenv`:
+先在 Codex 啟動環境設定帳密；`auth_token` 和 `member_token` 會讀取這兩個環境變數：
 
 ```bash
 export JUDICIAL_USER=your_username
 export JUDICIAL_PASSWORD=your_password
 ```
 
-## Development
+- `auth_token`：以司法院帳密取得裁判書 API Token。
+- `member_token`：以司法院帳密取得開放資料平台 Token。
+- `list_judgments`：使用裁判書 Token 查詢裁判書異動清單。
+- `get_judgment`：使用裁判書 Token 與 JID 取得裁判書。
+- `list_categories`：使用會員 Token 列出開放資料分類。
+- `list_resources`：使用會員 Token 與分類編號列出資料來源。
+- `download_file`：使用會員 Token 與檔案集 ID 下載資料，支援分頁。
+
+`query_regulation` 回傳最新公布條文；最新公布版本不一定已生效。生效狀態包含官方依據，資料不足時回傳 `unknown`。
+
+## Firecrawl 設定
+
+`query_regulation` 需要可用的 Firecrawl 服務。使用本機 Docker 服務時，從已設定環境變數的終端啟動 Codex：
+
+```bash
+FIRECRAWL_API_URL=http://127.0.0.1:3002 codex
+```
+
+若 Firecrawl 服務要求金鑰，再設定 `FIRECRAWL_API_KEY`。司法院帳密是選填，只供其他帳號授權工具使用。請勿將金鑰寫入外掛設定或提交環境檔。
+
+## 移除
+
+```bash
+codex plugin remove judicial-mcp@judicial-marketplace
+codex plugin marketplace remove judicial-marketplace
+```
+
+## 開發
 
 ```bash
 bun install --frozen-lockfile
@@ -163,6 +69,6 @@ bun run typecheck
 bun run build:types
 ```
 
-## License
+## 授權
 
 MIT
