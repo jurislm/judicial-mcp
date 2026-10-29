@@ -92,6 +92,32 @@ afterEach(() => {
 })
 
 describe('query_regulation', () => {
+  test.each(['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'])('recovers a transient name lookup failure %s', async code => {
+    mockedAxios.post.mockRejectedValueOnce(Object.assign(new Error('temporary failure'), { code }))
+    queueLawResponse()
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1', refresh: true }))
+    expect(data.article_text).toContain('民事')
+    expect(mockedAxios.post.mock.calls[0]).toEqual(mockedAxios.post.mock.calls[1])
+  })
+
+  test.each([502, 503, 504])('recovers a temporary name lookup HTTP %s', async status => {
+    mockedAxios.post.mockRejectedValueOnce({ response: { status } })
+    queueLawResponse()
+    expect(textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).status).toBe('current')
+  })
+
+  test('stops after two transient name lookup failures', async () => {
+    mockedAxios.post.mockRejectedValue(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({ code: 'source_unavailable' })
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
+  })
+
+  test.each([400, 401, 403, 404, 429])('does not retry name lookup HTTP %s', async status => {
+    mockedAxios.post.mockRejectedValueOnce({ response: { status } })
+    await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({ code: 'source_unavailable' })
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+  })
+
   test('exposes a public, tokenless tool with bounded query options', () => {
     expect(TOOLS_CONFIG.query_regulation.inputSchema).toMatchObject({
       type: 'object',

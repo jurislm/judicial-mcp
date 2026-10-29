@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises'
 import axios, { type AxiosResponse } from 'axios'
 import { load } from 'cheerio'
 import {
@@ -466,17 +467,30 @@ async function fetchHtml(url: URL): Promise<string> {
   return responseHtml(response.data, url)
 }
 
+function isTransientLookupFailure(error: unknown): boolean {
+  if (!isRecord(error)) return false
+  if (isRecord(error.response)) return [502, 503, 504].includes(Number(error.response.status))
+  return typeof error.code === 'string' && ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(error.code)
+}
+
 async function fetchTermCandidates(name: string, url: URL): Promise<RegulationCandidate[]> {
+  const options = termRequestOptions()
+  const request = () => axios.post<string>(
+    url.href,
+    new URLSearchParams({ term: name, type: 'ONEBAR' }).toString(),
+    options,
+  )
   let response: AxiosResponse<string>
   try {
-    const options = termRequestOptions()
-    response = await axios.post<string>(
-      url.href,
-      new URLSearchParams({ term: name, type: 'ONEBAR' }).toString(),
-      options,
-    )
+    response = await request()
   } catch (error: unknown) {
-    sourceFailure(error, url, false)
+    if (!isTransientLookupFailure(error)) sourceFailure(error, url, false)
+    await delay(500)
+    try {
+      response = await request()
+    } catch (retryError: unknown) {
+      sourceFailure(retryError, url, false)
+    }
   }
   if (response.status < 200 || response.status >= 300) throw new RegulationSourceError('source_changed', url.href)
   return parseTermCandidates(responseText(response, url), url)
