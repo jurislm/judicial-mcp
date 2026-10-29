@@ -80,6 +80,7 @@ function queueLawResponse(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockedAxios.post.mockReset()
   clearRegulationCache()
   vi.stubEnv('FIRECRAWL_API_URL', 'http://127.0.0.1:3002')
   vi.stubEnv('FIRECRAWL_API_KEY', '')
@@ -339,7 +340,7 @@ describe('query_regulation', () => {
     const cached = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
     expect(first.cache).toEqual({ status: 'miss' })
     expect(cached.cache).toEqual({ status: 'hit' })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(3)
     expect(mockedAxios.get).not.toHaveBeenCalled()
 
     queueLawResponse(lawSearch, lawArticle)
@@ -349,7 +350,7 @@ describe('query_regulation', () => {
       refresh: true,
     }))
     expect(refreshed.cache).toEqual({ status: 'refreshed' })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(6)
     expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
@@ -362,7 +363,7 @@ describe('query_regulation', () => {
     queueLawResponse()
 
     const revalidated = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
-    expect(mockedAxios.post).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(6)
     expect(mockedAxios.get).not.toHaveBeenCalled()
     expect(revalidated.cache).toEqual({ status: 'revalidated' })
 
@@ -371,7 +372,7 @@ describe('query_regulation', () => {
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'source_unavailable',
     })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(5)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(7)
     expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
@@ -388,7 +389,7 @@ describe('query_regulation', () => {
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
       code: 'regulation_abolished',
     })
-    expect(mockedAxios.post).toHaveBeenCalledTimes(4)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(5)
     expect(mockedAxios.get).not.toHaveBeenCalled()
   })
 
@@ -515,5 +516,59 @@ describe('query_regulation', () => {
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '第一條' })).rejects.toThrow()
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1', refresh: 'true' })).rejects.toThrow()
     expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+})
+
+describe('article effectiveness integration', () => {
+  const articlePage = lawArticle.replace('<h1>民法</h1>', '<table><tr><th>法規名稱：</th><td>民法</td></tr><tr><th>修正日期：</th><td>民國 115 年 08 月 17 日</td></tr></table>')
+  const historyUrl = 'https://law.moj.gov.tw/LawClass/LawHistory.aspx?pcode=B0000001'
+  const history = `<main><table><tr><th>法規名稱：</th><td>民法</td></tr><tr><th>修正日期：</th><td>民國 115 年 08 月 17 日</td></tr></table><div class="law-history"><div class="row"><div class="col-data">1. 中華民國一百十五年八月十七日總統令修正公布第 1 條條文；並自民國 115 年 08 月 17 日施行</div></div></div></main>`
+
+  function queueHistory(html = history, sourceURL = historyUrl) {
+    mockedAxios.post.mockResolvedValueOnce({ data: firecrawlResponse(html, sourceURL), headers: {} })
+  }
+
+  test('returns article-specific evidence separately from law-wide version metadata', async () => {
+    queueLawResponse(lawSearch, articlePage)
+    queueHistory()
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(data).toMatchObject({
+      article_text_version: 'latest_promulgated',
+      article_effectiveness: { status: 'effective', effective_date: '2026-08-17', basis: [{ source_url: historyUrl }] },
+    })
+  })
+
+  test('preserves article text but reports unknown when official history is unavailable', async () => {
+    queueLawResponse(lawSearch, articlePage)
+    mockedAxios.post.mockRejectedValueOnce(new Error('history unavailable'))
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(data).toMatchObject({ article_effectiveness: { status: 'unknown', effective_date: null } })
+    expect(data.article_text).toContain('民事')
+  })
+
+  test('does not trust a history redirect or a different law identity', async () => {
+    queueLawResponse(lawSearch, articlePage)
+    queueHistory(history, 'https://law.moj.gov.tw/LawClass/LawHistory.aspx?pcode=B0000002')
+    const redirected = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(redirected).toMatchObject({ article_effectiveness: { status: 'unknown' } })
+    clearRegulationCache()
+    queueLawResponse(lawSearch, articlePage)
+    queueHistory(history.replace('民法', '其他法規'))
+    const mismatched = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(mismatched).toMatchObject({ article_effectiveness: { status: 'unknown' } })
+  })
+
+  test('rechecks a cached decision across Taiwan midnight even before cache TTL expires', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-28T15:59:00.000Z'))
+    queueLawResponse(lawSearch, articlePage)
+    queueHistory()
+    await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })
+    vi.setSystemTime(new Date('2026-10-28T16:01:00.000Z'))
+    queueLawResponse(lawSearch, articlePage)
+    queueHistory()
+    const data = textData(await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }))
+    expect(data.cache).toEqual({ status: 'revalidated' })
+    expect(data).toMatchObject({ article_effectiveness: { checked_at: '2026-10-28T16:01:00.000Z' } })
   })
 })
