@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/jurislm/judicial-mcp/compare/v1.7.0...v1.8.0) (2026-10-29)
+
+
+### Features
+
+* **plugin:** install Judicial MCP through Codex marketplace (JUR-979) ([#34](https://github.com/jurislm/judicial-mcp/issues/34)) ([39be2a3](https://github.com/jurislm/judicial-mcp/commit/39be2a3901580c9c52315d78f371e6d0db2839f2))
+
 ## [1.7.0](https://github.com/jurislm/judicial-mcp/compare/v1.6.3...v1.7.0) (2026-10-29)
 
 
