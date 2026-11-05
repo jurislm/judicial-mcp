@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.3](https://github.com/jurislm/judicial-mcp/compare/v1.8.2...v1.8.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* **search:** classify cap pages without discarding results ([cf89442](https://github.com/jurislm/judicial-mcp/commit/cf8944297ab53d6ace6705101937e8e305aea528))
+* **search:** report official 500-result cap as partial ([80da4c9](https://github.com/jurislm/judicial-mcp/commit/80da4c933186deef598c44c3b3671740615198af))
+* **search:** report official 500-result cap as partial ([1005db9](https://github.com/jurislm/judicial-mcp/commit/1005db93717da9329b08b9e7137c02f930dc66f7))
+
 ## [1.8.2](https://github.com/jurislm/judicial-mcp/compare/v1.8.1...v1.8.2) (2026-10-29)
 
 
