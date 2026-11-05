@@ -65,6 +65,22 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(() => vi.restoreAllMocks())
 
 describe('judgment search and text tools', () => {
+  test('preserves valid results whose summary quotes the source cap message', async () => {
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: resultPage.replace('判決摘要', '查詢結果超出 500 筆'), headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: '<iframe src="qryresultlst.aspx?ty=JUDBOOK"></iframe>', headers: {} })
+    expect(toolData(await dispatchTool('search_judgments', { keyword: '消費者' }))).toMatchObject({ count: 1, partial: false, truncated: false })
+  })
+
+  test('recognizes Q004 through the official error iframe', async () => {
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: readFileSync(new URL('./fixtures/judgment-search-cap.html', import.meta.url), 'utf8'), headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: '<iframe src="../ErrorPage.aspx?frm=iframe&amp;err=Q004"></iframe>', headers: {} })
+    expect(toolData(await dispatchTool('search_judgments', { keyword: '消費者' }))).toMatchObject({ count: 0, partial: true, truncated: true, next_page: null, next_offset: null })
+  })
+
   test('reports the official Q004 cap as an incomplete search without a continuation', async () => {
     mockedAxios.get
       .mockResolvedValueOnce({ data: searchForm, headers: {} })
