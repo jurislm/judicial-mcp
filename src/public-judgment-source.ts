@@ -7,6 +7,7 @@ const SEARCH_URL = new URL('Default_AD.aspx', BASE_URL)
 const DETAIL_URL = new URL('data.aspx', BASE_URL)
 const PAGE_SIZE = 10
 const SOURCE_PAGE_SIZE = 20
+const SOURCE_RESULT_LIMIT = 500
 const MAX_PAGE = 50
 const MAX_TEXT_LENGTH = 40_000
 const MAX_SUMMARY_LENGTH = 500
@@ -352,6 +353,26 @@ function emptySearchResult(sourceUrl: URL, retrievedAt: string) {
   }
 }
 
+function cappedSearchResult(html: string, sourceUrl: URL, retrievedAt: string, criteria: SearchCriteria) {
+  const $ = load(html)
+  if ($('table#jud, table.jub-table').length) return undefined
+  const action = $('form').first().attr('action')
+  if (!action) return undefined
+  const url = new URL(action, sourceUrl)
+  if (
+    url.origin !== SEARCH_URL.origin ||
+    url.pathname.toLowerCase() !== '/errorpage.aspx' ||
+    url.searchParams.get('err') !== 'Q004' ||
+    !/查詢結果超出\s*500\s*筆/.test($('.page-header').text())
+  ) return undefined
+  return {
+    ...emptySearchResult(sourceUrl, retrievedAt),
+    ambiguous: Boolean(criteria.caseNumber),
+    truncated: true,
+    partial: true,
+  }
+}
+
 function validCaseId(value: string): boolean {
   return /^[A-Za-z0-9]{2,8},\d{1,4},[^,<>/?#]+,[A-Za-z0-9-]+,\d{8}(?:,\d+)?$/.test(value)
 }
@@ -406,6 +427,8 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
       upstreamFailure(error, errorPageUrl)
     }
     const errorPageHtml = sourceText(errorPageResponse.data, errorPageUrl)
+    const capped = cappedSearchResult(errorPageHtml, errorPageUrl, retrievedAt, criteria)
+    if (capped) return capped
     if (!NO_RESULTS.test(visibleBodyText(errorPageHtml))) {
       throw new JudicialSourceError('source_changed', errorPageUrl.href)
     }
@@ -419,9 +442,12 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
     upstreamFailure(error, resultUrl)
   }
   const resultsHtml = sourceText(resultResponse.data, resultUrl)
+  const capped = cappedSearchResult(resultsHtml, resultUrl, retrievedAt, criteria)
+  if (capped) return capped
   const allResults = parseResults(resultsHtml, resultUrl, retrievedAt)
   const sourceHasNextPage = hasNextPage(resultsHtml, criteria.page)
-  const pageHasNext = sourceHasNextPage && criteria.page < MAX_PAGE
+  const sourceLimitReached = sourceHasNextPage && criteria.page * SOURCE_PAGE_SIZE >= SOURCE_RESULT_LIMIT
+  const pageHasNext = sourceHasNextPage && criteria.page < MAX_PAGE && !sourceLimitReached
   const pageResults = allResults.slice(criteria.offset, criteria.offset + criteria.limit)
   const hasMoreOnPage = allResults.length > criteria.offset + criteria.limit
   const truncated = hasMoreOnPage || sourceHasNextPage || pageResults.some(result => result.truncated)
@@ -438,7 +464,7 @@ export async function searchJudgments(args: Record<string, unknown>): Promise<un
     retrieved_at: retrievedAt,
     cache: { status: 'not_cached' },
     truncated,
-    partial: hasMoreResults && !hasNextPageResult,
+    partial: sourceLimitReached || (hasMoreResults && !hasNextPageResult),
     next_page: hasMoreOnPage ? criteria.page : pageHasNext ? criteria.page + 1 : null,
     next_offset: hasMoreOnPage ? criteria.offset + criteria.limit : pageHasNext ? 0 : null,
     source_version: null,
