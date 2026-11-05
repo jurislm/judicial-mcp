@@ -65,6 +65,28 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(() => vi.restoreAllMocks())
 
 describe('judgment search and text tools', () => {
+  test('reports the official Q004 cap as an incomplete search without a continuation', async () => {
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: searchForm, headers: {} })
+      .mockResolvedValueOnce({ data: readFileSync(new URL('./fixtures/judgment-search-cap.html', import.meta.url), 'utf8'), headers: {} })
+    mockedAxios.post.mockResolvedValueOnce({ data: '<iframe src="qryresultlst.aspx?ty=JUDBOOK"></iframe>', headers: {} })
+    const result = await dispatchTool('search_judgments', { keyword: '消費者', year: 2026, page: 26 })
+    expect(result.isError).not.toBe(true)
+    expect(toolData(result)).toMatchObject({ count: 0, partial: true, truncated: true, next_page: null, next_offset: null })
+  })
+
+  test('stops at the 500th result while preserving the remaining rows on page 25', async () => {
+    const rows = Array.from({ length: 20 }, () => resultPage.match(/<tr>\s*<td>1<\/td>[\s\S]*?<\/tr>/)?.[0] ?? '').join('')
+    for (const offset of [0, 10]) {
+      mockedAxios.get
+        .mockResolvedValueOnce({ data: searchForm, headers: {} })
+        .mockResolvedValueOnce({ data: `<table id="jud">${rows}</table><a href="?page=26">下一頁</a>`, headers: {} })
+      mockedAxios.post.mockResolvedValueOnce({ data: '<iframe src="qryresultlst.aspx?ty=JUDBOOK"></iframe>', headers: {} })
+      const data = toolData(await dispatchTool('search_judgments', { keyword: '消費者', year: 2026, page: 25, offset, limit: 10 }))
+      expect(data).toMatchObject({ count: 10, partial: true, truncated: true, next_page: offset === 0 ? 25 : null, next_offset: offset === 0 ? 10 : null })
+    }
+  })
+
   test('exposes public high-level tools without credential inputs', () => {
     expect(TOOLS_CONFIG.search_judgments.inputSchema.properties).toEqual({
       keyword: expect.objectContaining({ type: 'string' }),
