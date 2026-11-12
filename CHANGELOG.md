@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.4](https://github.com/jurislm/judicial-mcp/compare/v1.8.3...v1.8.4) (2026-11-12)
+
+
+### Bug Fixes
+
+* **statutes:** distinguish Firecrawl configuration failures ([0d1dd4f](https://github.com/jurislm/judicial-mcp/commit/0d1dd4fbb7e0c755b1b0512665127d14b47da0e8))
+* **statutes:** distinguish Firecrawl configuration failures ([1af7b93](https://github.com/jurislm/judicial-mcp/commit/1af7b93f14e7c130cda6fbe7fc9c852473b938ea))
+
 ## [1.8.3](https://github.com/jurislm/judicial-mcp/compare/v1.8.2...v1.8.3) (2026-11-05)
 
 
