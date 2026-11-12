@@ -150,22 +150,22 @@ function termRequestOptions() {
 
 function firecrawlEndpoint(sourceUrl: URL): { endpoint: URL; apiKey?: string } {
   const configuredUrl = process.env.FIRECRAWL_API_URL?.trim()
-  if (!configuredUrl) throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+  if (!configuredUrl) throw new RegulationSourceError('firecrawl_not_configured', sourceUrl.href)
   let endpoint: URL
   try {
     endpoint = new URL(configuredUrl)
   } catch {
-    throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+    throw new RegulationSourceError('firecrawl_invalid_configuration', sourceUrl.href)
   }
   if (
     (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') ||
     endpoint.username.length > 0 || endpoint.password.length > 0 ||
     endpoint.search.length > 0 || endpoint.hash.length > 0
-  ) throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+  ) throw new RegulationSourceError('firecrawl_invalid_configuration', sourceUrl.href)
   const apiKey = process.env.FIRECRAWL_API_KEY?.trim()
   const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
   if (apiKey && endpoint.protocol === 'http:' && !loopbackHosts.has(endpoint.hostname.toLocaleLowerCase())) {
-    throw new RegulationSourceError('source_unavailable', sourceUrl.href)
+    throw new RegulationSourceError('firecrawl_invalid_configuration', sourceUrl.href)
   }
   endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, '')}/v1/scrape`
   return apiKey ? { endpoint, apiKey } : { endpoint }

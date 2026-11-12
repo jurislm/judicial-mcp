@@ -2,6 +2,8 @@ export type JudicialSourceErrorCode = 'source_unavailable' | 'source_changed' | 
 
 export type RegulationSourceErrorCode =
   | 'source_unavailable'
+  | 'firecrawl_not_configured'
+  | 'firecrawl_invalid_configuration'
   | 'source_changed'
   | 'regulation_not_found'
   | 'regulation_abolished'
@@ -9,6 +11,8 @@ export type RegulationSourceErrorCode =
 
 const REGULATION_ERROR_MESSAGES: Record<RegulationSourceErrorCode, string> = {
   source_unavailable: '法規查詢服務或法務部全國法規資料庫暫時無法使用',
+  firecrawl_not_configured: 'Firecrawl 未設定：請在啟動此 MCP 的環境設定 FIRECRAWL_API_URL，並重新連線',
+  firecrawl_invalid_configuration: 'Firecrawl 設定無效：請檢查 FIRECRAWL_API_URL 格式與 FIRECRAWL_API_KEY 的安全傳輸設定，並重新連線',
   source_changed: '法務部全國法規資料庫來源格式無法辨識',
   regulation_not_found: '官方來源查無指定法規',
   regulation_abolished: '指定法規已廢止，未回傳現行條文',

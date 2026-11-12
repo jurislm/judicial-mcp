@@ -238,10 +238,49 @@ describe('query_regulation', () => {
     mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
 
     await expect(dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' })).rejects.toMatchObject({
-      code: 'source_unavailable',
+      code: 'firecrawl_not_configured',
+      message: expect.stringContaining('FIRECRAWL_API_URL'),
     })
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
     expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    'not-a-url',
+    'ftp://localhost:3002',
+    'https://private-user:private-password@example.com',
+    'https://example.com?key=private-query-key',
+    'https://example.com#private-fragment',
+  ])('distinguishes invalid Firecrawl configuration without exposing it (%s)', async configuredUrl => {
+    vi.stubEnv('FIRECRAWL_API_URL', configuredUrl)
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+
+    const failure = await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: 'firecrawl_invalid_configuration' })
+    const response = createErrorResponse(failure, 'unused')
+    expect(response.isError).toBe(true)
+    const content = response.content[0]
+    if (content?.type !== 'text') throw new Error('Expected text error response')
+    expect(JSON.parse(content.text)).toMatchObject({ error: {
+      code: 'firecrawl_invalid_configuration',
+      message: expect.stringContaining('FIRECRAWL_API_URL'),
+      source_url: 'https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=B0000001',
+      retrieved_at: expect.any(String),
+    } })
+    expect(content.text).not.toContain(configuredUrl)
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+    expect(mockedAxios.get).not.toHaveBeenCalled()
+  })
+
+  test('classifies insecure remote Firecrawl key transport as configuration failure', async () => {
+    vi.stubEnv('FIRECRAWL_API_URL', 'http://firecrawl.example.com')
+    vi.stubEnv('FIRECRAWL_API_KEY', 'private-firecrawl-key')
+    mockedAxios.post.mockResolvedValueOnce({ data: lawSearch, headers: {} })
+
+    const failure = await dispatchTool('query_regulation', { lawName: '民法', articleNumber: '1' }).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: 'firecrawl_invalid_configuration' })
+    expect(JSON.stringify(createErrorResponse(failure, 'unused'))).not.toContain('private-firecrawl-key')
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
   })
 
   test('does not follow a redirect from the official autocomplete endpoint', async () => {
