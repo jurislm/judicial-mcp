@@ -52,6 +52,14 @@ FIRECRAWL_API_URL=http://127.0.0.1:3002 codex
 
 若 Firecrawl 服務要求金鑰，再設定 `FIRECRAWL_API_KEY`。司法院帳密是選填，只供其他帳號授權工具使用。請勿將金鑰寫入外掛設定或提交環境檔。
 
+### 法規查詢錯誤排查
+
+- `firecrawl_not_configured`：執行外掛的 MCP 程序沒有取得 `FIRECRAWL_API_URL`，或其值為空白。請將已部署的 Firecrawl 位址傳入實際啟動外掛的環境，再重新連線。終端、手動 MCP 設定與已啟動的外掛程序可能使用不同環境；獨立程序成功不代表聊天掛載的外掛已恢復。
+- `firecrawl_invalid_configuration`：Firecrawl 位址必須為 HTTP(S)，不得包含帳密、查詢參數或 fragment；傳送 API key 到非 loopback 主機時必須使用 HTTPS。錯誤回應不會包含設定值或金鑰。
+- `source_unavailable`：法規名稱查詢或已設定的 Firecrawl 抓取失敗，不能只憑此代碼判定法務部網站故障。
+
+設定後，在同一聊天掛載的外掛執行 `query_regulation`，指定 `lawName="民法"`、`articleNumber="184"`、`refresh=true`，核對條文、官方來源與 `article_effectiveness`。不要以快取結果或獨立程序的成功取代外掛驗收。
+
 ## 移除
 
 ```bash
