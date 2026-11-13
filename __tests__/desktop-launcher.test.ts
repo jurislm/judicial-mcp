@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -92,4 +92,14 @@ it('includes the desktop launcher in the published package', () => {
   const [{ filename }] = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', output, '--json'], { encoding: 'utf8' }))
   const packed = execFileSync('tar', ['-xOf', join(output, filename), 'package/launchers/judicial-desktop.mjs'], { encoding: 'utf8' })
   expect(packed).toBe(readFileSync(launcher, 'utf8'))
+})
+
+it('resolves dotenv from the installed package when dependencies are not hoisted', () => {
+  const f = fixture()
+  mkdirSync(join(f.installed, 'node_modules'), { recursive: true })
+  renameSync(join(f.runtime, 'node_modules/dotenv'), join(f.installed, 'node_modules/dotenv'))
+  const result = f.run()
+  expect(result.status).toBe(0)
+  expect(result.stderr).toBe('')
+  expect(JSON.parse(result.stdout).result.env.JUDICIAL_USER).toBe('fixture-user')
 })

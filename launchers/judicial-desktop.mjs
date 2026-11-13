@@ -24,7 +24,7 @@ try {
   const allowed = new Set(['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'FIRECRAWL_API_URL'])
   for (const key of Object.keys(process.env)) if (!allowed.has(key)) delete process.env[key]
   process.env.DOTENV_CONFIG_PATH = '/dev/null'
-  const require = createRequire(join(runtime, 'package.json'))
+  const require = createRequire(join(realpathSync(installed), 'package.json'))
   const { parse } = require('dotenv')
   const { JUDICIAL_USER: user, JUDICIAL_USERNAME: alias, JUDICIAL_PASSWORD: password } = parse(readFileSync(source))
   const username = user ?? alias
