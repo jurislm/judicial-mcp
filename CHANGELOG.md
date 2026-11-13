@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.5](https://github.com/jurislm/judicial-mcp/compare/v1.8.4...v1.8.5) (2026-11-13)
+
+
+### Bug Fixes
+
+* **desktop:** launch fixed Judicial runtime with scoped credentials ([ff3bab3](https://github.com/jurislm/judicial-mcp/commit/ff3bab38e1052e7bbe1cb9de9b32a39cc5b1533b))
+* **desktop:** launch fixed Judicial runtime with scoped credentials ([2317e4e](https://github.com/jurislm/judicial-mcp/commit/2317e4e7d26944413a65408cb4ac9a38b79a165d))
+* **desktop:** resolve dotenv from installed package ([829a312](https://github.com/jurislm/judicial-mcp/commit/829a31201f880e49762b80b74eb5cf2d70bbc0d1))
+
 ## [1.8.4](https://github.com/jurislm/judicial-mcp/compare/v1.8.3...v1.8.4) (2026-11-12)
 
 
