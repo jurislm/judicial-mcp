@@ -80,3 +80,22 @@ bun run build:types
 ## 授權
 
 MIT
+
+### 固定安裝的桌面啟動器
+
+若桌面啟動不能依賴 npm registry 或可清除的 bunx 暫存，可將已核准版本固定安裝在 `$HOME/.local/share/jurislm/mcp/judicial-mcp`。安裝與更新是明確的獨立步驟，不在 MCP handshake 期間執行。
+
+```sh
+runtime="$HOME/.local/share/jurislm/mcp/judicial-mcp"
+mkdir -p "$runtime"
+cd "$runtime"
+bun add --exact --ignore-scripts @jurislm/judicial-mcp@<核准版本>
+```
+
+保留此目錄的 `package.json`、`bun.lock` 及完整 `node_modules`。`package.json` 的精確版本是唯一版本選擇來源；啟動器核對 lock 與安裝版身分，不接受 `latest` 或範圍版本。離線重建可使用 `bun install --offline --frozen-lockfile --ignore-scripts`，快取不完整時會失敗，不會改用其他 registry。更新前保留原安裝，更新後先驗證 initialize 的 `serverInfo` 與工具目錄，再切換正式設定。
+
+將本 repository 的 `launchers/judicial-desktop.mjs` 複製到桌面啟動器位置，例如 `$HOME/.codex/bin/judicial-desktop.mjs`。在 MCP 設定中使用 Bun 的絕對路徑，參數為 `--no-env-file` 與啟動器的絕對路徑；以 `JUDICIAL_ENV_FILE` 指定原有憑證檔的絕對路徑。不要複製憑證到 runtime、設定檔或命令列。
+
+此啟動器專供需要帳密的連線：檔案必須同時包含 `JUDICIAL_USER`（或既有別名 `JUDICIAL_USERNAME`）及 `JUDICIAL_PASSWORD`，兩個帳號鍵並存時必須相同。檔案只以 dotenv 解析，不會執行 shell 或展開 `$`。僅兩個憑證鍵進入 MCP 環境；原檔不會改寫。保留的父環境僅有 `HOME`、`PATH`、`TMPDIR`、`LANG`、`LC_ALL`、`TZ` 與既有 `FIRECRAWL_API_URL`，不繼承其他憑證或自動載入 cwd 的 `.env`。此方式不變更其他 MCP 的 required、approval 或排程。
+
+缺少安裝、lock、entry 或憑證時會快速失敗，stderr 只輸出不含秘密的錯誤，stdout 留給 MCP。這不取代安裝後的隔離 initialize、正式掛載及授權窗口內的 JDoc 驗收；不需要帳密的公開工具可維持既有啟動方式。
