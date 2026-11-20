@@ -10,6 +10,7 @@ steps:
     commands:
       - apk add --no-cache git nodejs npm
       - bun install --frozen-lockfile
+      - bun scripts/ci/verification-release.ts prepare
       - bun run typecheck
       - bun run test
       - bun run lint
@@ -24,7 +25,7 @@ steps:
       NPM_TOKEN:
         from_secret: npm_token
     commands:
-      - apk add --no-cache nodejs npm
+      - apk add --no-cache git nodejs npm
       - trap 'rm -f "$HOME/.npmrc"' EXIT
       - printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
-      - npm publish .release/*.tgz --access public --ignore-scripts
+      - bun scripts/ci/verification-release.ts publish
