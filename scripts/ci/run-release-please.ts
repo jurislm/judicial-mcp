@@ -43,9 +43,14 @@ export async function runReleasePlease(
   )
   let temporary: string | undefined
   try {
-    temporary = await mkdtemp(join(tmpdir(), 'judicial-release-'))
-    const tokenPath = join(temporary, 'token')
-    await writeFile(tokenPath, token, { flag: 'wx', mode: 0o600 })
+    let tokenPath: string
+    try {
+      temporary = await mkdtemp(join(tmpdir(), 'judicial-release-'))
+      tokenPath = join(temporary, 'token')
+      await writeFile(tokenPath, token, { flag: 'wx', mode: 0o600 })
+    } catch {
+      throw new Error('Release Please credential setup failed')
+    }
     const current = parseReleaseRepository(
       await readGitHub(`/repos/${repository.fullName}`),
     )
@@ -55,19 +60,22 @@ export async function runReleasePlease(
       await readGitHub(`/repositories/${releaseRepoId}/git/ref/heads/main`),
     )
     if (liveMain !== expectedBaseSha) return
-    const code = await run([
-      'bunx',
-      'release-please@17.11.2',
-      mode,
-      `--token=${tokenPath}`,
-      `--repo-url=https://github.com/${repository.fullName}`,
-      '--target-branch=main',
-      '--config-file=release-please-config.json',
-      '--manifest-file=.release-please-manifest.json',
-    ])
-    if (code !== 0) throw new Error()
-  } catch {
-    throw new Error(`Release Please failed: ${mode}`)
+    let code: number
+    try {
+      code = await run([
+        'bunx',
+        'release-please@17.11.2',
+        mode,
+        `--token=${tokenPath}`,
+        `--repo-url=https://github.com/${repository.fullName}`,
+        '--target-branch=main',
+        '--config-file=release-please-config.json',
+        '--manifest-file=.release-please-manifest.json',
+      ])
+    } catch {
+      throw new Error(`Release Please failed: ${mode}`)
+    }
+    if (code !== 0) throw new Error(`Release Please failed: ${mode}`)
   } finally {
     if (temporary)
       await rm(temporary, { recursive: true, force: true }).catch(() => {

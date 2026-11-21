@@ -71,8 +71,14 @@ describe('runReleasePlease', () => {
           ])
           expect(args.join(' ')).not.toContain(synthetic)
           expect(await readFile(path, 'utf8')).toBe(synthetic)
-          expect((await stat(path)).mode & 0o777).toBe(0o600)
-          expect((await stat(dirname(path))).mode & 0o777).toBe(0o700)
+          const tokenFile = await stat(path)
+          const tokenDir = await stat(dirname(path))
+          expect(tokenFile.isFile()).toBe(true)
+          expect(tokenDir.isDirectory()).toBe(true)
+          if (process.platform !== 'win32') {
+            expect(tokenFile.mode & 0o777).toBe(0o600)
+            expect(tokenDir.mode & 0o777).toBe(0o700)
+          }
           return 0
         },
         sha,
@@ -102,7 +108,7 @@ describe('runReleasePlease', () => {
         run,
         sha,
       ),
-    ).rejects.toThrow()
+    ).rejects.toThrow('GitHub release repository identity mismatch')
     expect(run).not.toHaveBeenCalled()
   })
 
@@ -119,7 +125,7 @@ describe('runReleasePlease', () => {
         run,
         sha,
       ),
-    ).rejects.toThrow()
+    ).rejects.toThrow('Invalid GitHub main ref')
     expect(run).not.toHaveBeenCalled()
   })
 
