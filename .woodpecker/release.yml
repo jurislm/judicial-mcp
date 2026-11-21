@@ -15,7 +15,7 @@ steps:
       GITHUB_API_TOKEN:
         from_secret: personal_access_tokens_fine_grained_tokens_jurislm
     commands:
-      - bunx release-please@17.11.2 github-release --token=$GITHUB_API_TOKEN --repo-url=https://github.com/jurislm/judicial-mcp --target-branch=main --config-file=release-please-config.json --manifest-file=.release-please-manifest.json
+      - bun scripts/ci/run-release-please.ts github-release
   - name: release-pr
     image: oven/bun:1.3.14
     depends_on:
@@ -24,4 +24,4 @@ steps:
       GITHUB_API_TOKEN:
         from_secret: personal_access_tokens_fine_grained_tokens_jurislm
     commands:
-      - bunx release-please@17.11.2 release-pr --token=$GITHUB_API_TOKEN --repo-url=https://github.com/jurislm/judicial-mcp --target-branch=main --config-file=release-please-config.json --manifest-file=.release-please-manifest.json
+      - bun scripts/ci/run-release-please.ts release-pr

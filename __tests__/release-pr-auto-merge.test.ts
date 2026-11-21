@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   RELEASE_BRANCH,
-  REPOSITORY,
   evaluateRequiredChecks,
   runReleasePrAutoMerge,
   selectReleaseCandidate,
@@ -10,6 +9,7 @@ import {
   type ReleaseContents,
 } from '../scripts/ci/release-pr-auto-merge'
 
+const REPOSITORY = 'jurislm/judicial-mcp'
 const VERSION = '1.6.0'
 const BASE_SHA = 'a'.repeat(40)
 const HEAD_SHA = 'b'.repeat(40)
@@ -27,11 +27,11 @@ function pull(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     title: `chore(main): release ${VERSION}`,
     body: BODY,
     user: { login: 'terry90918' },
-    base: { ref: 'main', sha: BASE_SHA, repo: { full_name: REPOSITORY } },
+    base: { ref: 'main', sha: BASE_SHA, repo: { id: 1010982060, full_name: REPOSITORY } },
     head: {
       ref: RELEASE_BRANCH,
       sha: HEAD_SHA,
-      repo: { full_name: REPOSITORY },
+      repo: { id: 1010982060, full_name: REPOSITORY },
     },
     mergeable: true,
     ...overrides,
@@ -100,13 +100,13 @@ describe('selectReleaseCandidate', () => {
     [{ draft: true }, 'is a draft'],
     [{ title: 'chore(main): release 1.6.0-beta' }, 'exact release title'],
     [{ body: 'hello' }, 'release-please markers'],
-    [{ head: { ref: 'evil', sha: HEAD_SHA, repo: { full_name: REPOSITORY } } }, 'head branch mismatch'],
+    [{ head: { ref: 'evil', sha: HEAD_SHA, repo: { id: 1010982060, full_name: REPOSITORY } } }, 'head branch mismatch'],
     [
       {
         head: {
           ref: RELEASE_BRANCH,
           sha: HEAD_SHA,
-          repo: { full_name: 'fork/judicial-mcp' },
+          repo: { id: 1010982061, full_name: REPOSITORY },
         },
       },
       'head repository mismatch',
@@ -260,6 +260,10 @@ interface FakeOptions {
   checks?: unknown
   pendingCheckPolls?: number
   mainSha?: string
+  mainShaAfterUpdate?: string
+  owner?: string
+  repositoryId?: number
+  canonicalRepositoryId?: number
   prBaseSha?: string
   compareStatus?: string
   update?: FakeUpdate | 'never'
@@ -268,9 +272,11 @@ interface FakeOptions {
 function fakeGitHub(options: FakeOptions = {}) {
   const c = contents()
   const calls: Array<{ method: string; path: string; body?: string }> = []
+  const owner = options.owner ?? "jurislm"
+  const repository = `${owner}/judicial-mcp`
   const prBaseSha = options.prBaseSha ?? BASE_SHA
   let current = pull({
-    base: { ref: 'main', sha: prBaseSha, repo: { full_name: REPOSITORY } },
+    base: { ref: 'main', sha: prBaseSha, repo: { id: 1010982060, full_name: REPOSITORY } },
   })
   let updateRequested = false
   let pollsSinceUpdate = 0
@@ -299,12 +305,12 @@ function fakeGitHub(options: FakeOptions = {}) {
           base: {
             ref: 'main',
             sha: update.baseSha,
-            repo: { full_name: REPOSITORY },
+            repo: { id: 1010982060, full_name: REPOSITORY },
           },
           head: {
             ref: RELEASE_BRANCH,
             sha: update.headSha,
-            repo: { full_name: REPOSITORY },
+            repo: { id: 1010982060, full_name: REPOSITORY },
           },
         })
       }
@@ -323,23 +329,35 @@ function fakeGitHub(options: FakeOptions = {}) {
     calls.push({ method, path, body: init?.body as string | undefined })
     const headSha = (current.head as { sha: string }).sha
     let value: unknown
-    if (path === `/repos/${REPOSITORY}/pulls`) value = options.pulls ?? [current]
-    else if (path === `/repos/${REPOSITORY}/pulls/20`) value = pullDetail()
-    else if (path === `/repos/${REPOSITORY}/pulls/20/files`) value = FILES
-    else if (path === `/repos/${REPOSITORY}/commits/${headSha}/check-runs`) value = checksFor()
-    else if (path === `/repos/${REPOSITORY}/git/ref/heads/main`)
-      value = { object: { sha: options.mainSha ?? prBaseSha } }
-    else if (path.startsWith(`/repos/${REPOSITORY}/compare/`)) value = { status: options.compareStatus ?? 'behind' }
-    else if (path.startsWith(`/repos/${REPOSITORY}/contents/`)) {
-      const filePath = decodeURIComponent(path.slice(`/repos/${REPOSITORY}/contents/`.length))
+    if (path === '/repositories/1010982060' || path === `/repos/${repository}`) {
+      value = {
+        id: (path === '/repositories/1010982060' ? options.repositoryId : options.canonicalRepositoryId) ?? 1010982060,
+        name: 'judicial-mcp',
+        full_name: repository,
+        owner: { id: 273012487, login: owner, type: 'Organization' },
+        default_branch: 'main',
+        fork: false,
+      }
+    } else if (path === `/repos/${repository}/pulls`) {
+      expect(url.searchParams.get('head')).toBe(`${owner}:${RELEASE_BRANCH}`)
+      value = options.pulls ?? [current]
+    }
+    else if (path === `/repos/${repository}/pulls/20`) value = pullDetail()
+    else if (path === `/repos/${repository}/pulls/20/files`) value = FILES
+    else if (path === `/repos/${repository}/commits/${headSha}/check-runs`) value = checksFor()
+    else if (path === `/repos/${repository}/git/ref/heads/main`)
+      value = { object: { sha: (updateRequested ? options.mainShaAfterUpdate : undefined) ?? options.mainSha ?? prBaseSha } }
+    else if (path.startsWith(`/repos/${repository}/compare/`)) value = { status: options.compareStatus ?? 'behind' }
+    else if (path.startsWith(`/repos/${repository}/contents/`)) {
+      const filePath = decodeURIComponent(path.slice(`/repos/${repository}/contents/`.length))
       const text = fileAt[`${filePath}@${url.searchParams.get('ref')}`]
       value = text === undefined ? undefined : file(text)
-    } else if (method === 'PUT' && path === `/repos/${REPOSITORY}/pulls/20/update-branch`) {
+    } else if (method === 'PUT' && path === `/repos/${repository}/pulls/20/update-branch`) {
       const expected = JSON.parse((init?.body as string | undefined) ?? '{}').expected_head_sha
       if (expected !== headSha) return new Response('{}', { status: 422 })
       updateRequested = true
       return new Response(JSON.stringify({ message: 'Updating pull request branch.' }), { status: 202 })
-    } else if (method === 'PUT' && path === `/repos/${REPOSITORY}/pulls/20/merge`)
+    } else if (method === 'PUT' && path === `/repos/${repository}/pulls/20/merge`)
       value = { merged: true, sha: MERGE_SHA }
     if (value === undefined) return new Response('{}', { status: 404 })
     return new Response(JSON.stringify(value), { status: 200 })
@@ -353,6 +371,21 @@ const quiet = { log: () => undefined }
 const noSleep = async () => undefined
 
 describe('runReleasePrAutoMerge', () => {
+  it('uses the current canonical owner and fails closed on a wrong repository ID', async () => {
+    const renamed = fakeGitHub({ owner: 'renamed-owner', pulls: [] })
+    await expect(runReleasePrAutoMerge({
+      token: 't', expectedBaseSha: BASE_SHA, fetchImpl: renamed.fetchImpl, logger: quiet,
+    })).resolves.toEqual({ status: 'no-op' })
+    expect(renamed.calls.map(({ path }) => path)).toEqual([
+      '/repositories/1010982060', '/repos/renamed-owner/judicial-mcp/pulls',
+    ])
+    const wrong = fakeGitHub({ repositoryId: 1010982061 })
+    await expect(runReleasePrAutoMerge({
+      token: 't', expectedBaseSha: BASE_SHA, fetchImpl: wrong.fetchImpl, logger: quiet,
+    })).rejects.toThrow('repository identity mismatch')
+    expect(wrong.calls.map(({ path }) => path)).toEqual(['/repositories/1010982060'])
+  })
+
   it('merges the validated release PR at its head SHA once checks are green', async () => {
     const gh = fakeGitHub()
     const result = await runReleasePrAutoMerge({
@@ -373,6 +406,14 @@ describe('runReleasePrAutoMerge', () => {
       merge_method: 'merge',
     })
   })
+  it('refuses to merge when the resolved canonical name no longer identifies the expected repository', async () => {
+    const gh = fakeGitHub({ canonicalRepositoryId: 1010982061 })
+    await expect(runReleasePrAutoMerge({
+      token: 't', expectedBaseSha: BASE_SHA, fetchImpl: gh.fetchImpl, sleep: noSleep, logger: quiet,
+    })).rejects.toThrow('repository identity mismatch')
+    expect(gh.merges()).toEqual([])
+  })
+
   it('is a no-op when there is no release PR', async () => {
     const gh = fakeGitHub({ pulls: [] })
     await expect(
@@ -475,13 +516,30 @@ describe('runReleasePrAutoMerge when the release PR base is behind main', () => 
     expect(gh.merges()).toEqual([])
   })
 
+  it('refuses to update the branch if the canonical repository identity has changed', async () => {
+    const gh = fakeGitHub({ canonicalRepositoryId: 1010982061, mainSha: CI_SHA })
+    await expect(run(gh)).rejects.toThrow('repository identity mismatch')
+    expect(gh.updates()).toEqual([])
+    expect(gh.merges()).toEqual([])
+  })
+
+  it('does not update or merge if main was already ahead', async () => {
+    const newerMain = 'd'.repeat(40)
+    const gh = fakeGitHub({ mainSha: newerMain, update: { headSha: NEW_HEAD_SHA, baseSha: newerMain } })
+    await expect(run(gh)).resolves.toEqual({ status: 'no-op' })
+    expect(gh.updates()).toEqual([])
+    expect(gh.merges()).toEqual([])
+  })
+
   it('yields without merging when main advanced while the branch was updating', async () => {
     const newerMain = 'd'.repeat(40)
     const gh = fakeGitHub({
-      mainSha: newerMain,
+      mainSha: CI_SHA,
+      mainShaAfterUpdate: newerMain,
       update: { headSha: NEW_HEAD_SHA, baseSha: newerMain },
     })
     await expect(run(gh)).resolves.toEqual({ status: 'no-op' })
+    expect(gh.updates()).toHaveLength(1)
     expect(gh.merges()).toEqual([])
   })
 
