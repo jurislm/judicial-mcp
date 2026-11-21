@@ -48,7 +48,7 @@ export async function runReleasePlease(
     if (current.fullName !== repository.fullName)
       throw new Error('GitHub release repository identity changed')
     const liveMain = await readGitHub(
-      `/repos/${repository.fullName}/git/ref/heads/main`,
+      `/repositories/${releaseRepoId}/git/ref/heads/main`,
     )
     if (
       !liveMain ||

@@ -27,7 +27,7 @@ function fakeGitHub(mainSha = sha, nameId = 1010982060) {
     if (path === '/repositories/1010982060') return Response.json(identity)
     if (path === `/repos/${canonical}`)
       return Response.json({ ...identity, id: nameId })
-    if (path === `/repos/${canonical}/git/ref/heads/main`)
+    if (path === '/repositories/1010982060/git/ref/heads/main')
       return Response.json({ object: { sha: mainSha } })
     return new Response('', { status: 404 })
   })
@@ -44,7 +44,13 @@ describe('runReleasePlease', () => {
         synthetic,
         github,
         async (args) => {
-          expect(github.mock.calls).toHaveLength(3)
+          expect(
+            github.mock.calls.map(([url]) => new URL(String(url)).pathname),
+          ).toEqual([
+            '/repositories/1010982060',
+            `/repos/${canonical}`,
+            '/repositories/1010982060/git/ref/heads/main',
+          ])
           path = args[3]!.slice('--token='.length)
           expect(isAbsolute(path)).toBe(true)
           expect(args).toEqual([

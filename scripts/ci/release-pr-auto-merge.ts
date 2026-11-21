@@ -313,15 +313,11 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
     }
   }
 
-  const repository = parseReleaseRepository(await githubRequest(`/repositories/${releaseRepoId}`))
-
-  async function verifyCanonicalRepository(): Promise<void> {
-    const current = parseReleaseRepository(await githubRequest(`/repos/${repository.fullName}`))
-    if (current.fullName !== repository.fullName) throw new Error('GitHub release repository identity changed')
-  }
+  const repositoryPath = `/repositories/${releaseRepoId}`
+  const repository = parseReleaseRepository(await githubRequest(repositoryPath))
 
   async function mainSha(): Promise<string> {
-    const value = requiredRecord(await githubRequest(`/repos/${repository.fullName}/git/ref/heads/${BASE_BRANCH}`), 'base ref')
+    const value = requiredRecord(await githubRequest(`${repositoryPath}/git/ref/heads/${BASE_BRANCH}`), 'base ref')
     return requiredString(requiredRecord(value.object, 'base ref.object').sha, 'base ref.object.sha')
   }
 
@@ -331,13 +327,13 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
     head: `${repository.owner}:${RELEASE_BRANCH}`,
     per_page: '100',
   })
-  const candidate = selectReleaseCandidate(await githubRequest(`/repos/${repository.fullName}/pulls?${query.toString()}`))
+  const candidate = selectReleaseCandidate(await githubRequest(`${repositoryPath}/pulls?${query.toString()}`))
   if (!candidate) {
     logger.log('No open release-please Release PR found; nothing to merge.')
     return { status: 'no-op' }
   }
 
-  const detailValue = await githubRequest(`/repos/${repository.fullName}/pulls/${candidate.number}`)
+  const detailValue = await githubRequest(`${repositoryPath}/pulls/${candidate.number}`)
   let detail = selectReleaseCandidate([detailValue])
   if (!detail || detail.headSha !== candidate.headSha || detail.baseSha !== candidate.baseSha) {
     throw new Error('release PR changed before content validation')
@@ -345,7 +341,7 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
   if (detail.baseSha !== expectedBaseSha) {
     const comparison = requiredRecord(
       await githubRequest(
-        `/repos/${repository.fullName}/compare/${encodeURIComponent(expectedBaseSha)}...${encodeURIComponent(detail.baseSha)}?per_page=1`,
+        `${repositoryPath}/compare/${encodeURIComponent(expectedBaseSha)}...${encodeURIComponent(detail.baseSha)}?per_page=1`,
       ),
       'commit comparison',
     )
@@ -359,13 +355,12 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
         `release PR base SHA does not match CI commit (pr=${detail.baseSha}, ci=${expectedBaseSha}, relation=${relation})`,
       )
     }
-    await verifyCanonicalRepository()
     if ((await mainSha()) !== expectedBaseSha) {
       logger.log('main advanced before branch update; yielding to newer build.')
       return { status: 'no-op' }
     }
     logger.log(`Release PR #${detail.number} base is behind ${expectedBaseSha}; updating its branch.`)
-    await githubRequest(`/repos/${repository.fullName}/pulls/${detail.number}/update-branch`, {
+    await githubRequest(`${repositoryPath}/pulls/${detail.number}/update-branch`, {
       method: 'PUT',
       body: JSON.stringify({ expected_head_sha: detail.headSha }),
     })
@@ -373,7 +368,7 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
     let updated: ReleaseCandidate | null = null
     for (let attempt = 1; attempt <= maxAttempts && !updated; attempt += 1) {
       if (attempt > 1) await sleep(pollDelayMs)
-      const current = selectReleaseCandidate([await githubRequest(`/repos/${repository.fullName}/pulls/${detail.number}`)])
+      const current = selectReleaseCandidate([await githubRequest(`${repositoryPath}/pulls/${detail.number}`)])
       if (!current || current.number !== detail.number) throw new Error('release PR changed during branch update')
       if (current.headSha !== previousHeadSha) updated = current
     }
@@ -388,12 +383,12 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
     detail = updated
   }
 
-  const changedFiles = await githubRequest(`/repos/${repository.fullName}/pulls/${detail.number}/files?per_page=100`)
+  const changedFiles = await githubRequest(`${repositoryPath}/pulls/${detail.number}/files?per_page=100`)
   validateChangedFiles(changedFiles)
 
   const getFile = async (path: string, ref: string): Promise<string> =>
     contentText(
-      await githubRequest(`/repos/${repository.fullName}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`),
+      await githubRequest(`${repositoryPath}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`),
       `${path}@${ref}`,
     )
   const [
@@ -436,7 +431,7 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
   let checks: CheckState = 'pending'
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     checks = evaluateRequiredChecks(
-      await githubRequest(`/repos/${repository.fullName}/commits/${encodeURIComponent(detail.headSha)}/check-runs?per_page=100`),
+      await githubRequest(`${repositoryPath}/commits/${encodeURIComponent(detail.headSha)}/check-runs?per_page=100`),
     )
     if (checks === 'success') break
     if (attempt < maxAttempts) await sleep(pollDelayMs)
@@ -445,7 +440,7 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
 
   let mergeable = false
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const currentValue = await githubRequest(`/repos/${repository.fullName}/pulls/${detail.number}`)
+    const currentValue = await githubRequest(`${repositoryPath}/pulls/${detail.number}`)
     const current = selectReleaseCandidate([currentValue])
     if (!current || current.headSha !== detail.headSha || current.baseSha !== detail.baseSha) {
       throw new Error('release PR changed during mergeability check')
@@ -461,14 +456,13 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
   }
   if (!mergeable) throw new Error('release PR mergeability check timed out')
 
-  await verifyCanonicalRepository()
   if ((await mainSha()) !== expectedBaseSha) {
     logger.log('main advanced during validation; yielding to newer build.')
     return { status: 'no-op' }
   }
 
   const merged = requiredRecord(
-    await githubRequest(`/repos/${repository.fullName}/pulls/${detail.number}/merge`, {
+    await githubRequest(`${repositoryPath}/pulls/${detail.number}/merge`, {
       method: 'PUT',
       body: JSON.stringify({ sha: detail.headSha, merge_method: 'merge' }),
     }),
