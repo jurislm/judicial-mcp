@@ -193,7 +193,7 @@ function requestOptions(cookie?: string) {
     validateStatus: (status: number) => status >= 200 && status < 300,
     responseType: 'text' as const,
     headers: {
-      'User-Agent': 'judicial-mcp/1.5 (https://github.com/jurislm/judicial-mcp)',
+      'User-Agent': 'judicial-mcp/1.5 (https://github.com/r-seriesx/judicial-mcp)',
       ...(cookie ? { Cookie: cookie } : {}),
     },
   }
