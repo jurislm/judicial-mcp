@@ -9,13 +9,13 @@
     "court",
     "taiwan"
   ],
-  "homepage": "https://github.com/jurislm/judicial-mcp#readme",
+  "homepage": "https://github.com/r-seriesx/judicial-mcp#readme",
   "bugs": {
-    "url": "https://github.com/jurislm/judicial-mcp/issues"
+    "url": "https://github.com/r-seriesx/judicial-mcp/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jurislm/judicial-mcp.git"
+    "url": "git+https://github.com/r-seriesx/judicial-mcp.git"
   },
   "license": "MIT",
   "author": {

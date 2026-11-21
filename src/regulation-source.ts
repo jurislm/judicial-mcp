@@ -143,7 +143,7 @@ function termRequestOptions() {
     headers: {
       Accept: 'application/json,text/plain',
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'judicial-mcp/1.5 (https://github.com/jurislm/judicial-mcp)',
+      'User-Agent': 'judicial-mcp/1.5 (https://github.com/r-seriesx/judicial-mcp)',
     },
   }
 }

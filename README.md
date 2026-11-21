@@ -7,7 +7,7 @@
 需要 Bun 1.3.14 以上版本，並確保 Codex 可在 `PATH` 找到 `bun`。
 
 ```bash
-codex plugin marketplace add jurislm/judicial-mcp
+codex plugin marketplace add r-seriesx/judicial-mcp
 codex plugin add judicial-mcp@judicial-marketplace
 ```
 

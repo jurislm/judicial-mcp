@@ -5,10 +5,10 @@
   "description": "Taiwan judicial judgments and regulations with official source evidence.",
   "author": {
     "name": "JurisLM",
-    "url": "https://github.com/jurislm"
+    "url": "https://github.com/r-seriesx"
   },
-  "homepage": "https://github.com/jurislm/judicial-mcp",
-  "repository": "https://github.com/jurislm/judicial-mcp",
+  "homepage": "https://github.com/r-seriesx/judicial-mcp",
+  "repository": "https://github.com/r-seriesx/judicial-mcp",
   "license": "MIT",
   "keywords": [
     "taiwan",
@@ -28,7 +28,7 @@
         "capabilities": [
           "Read"
         ],
-        "websiteURL": "https://github.com/jurislm/judicial-mcp",
+        "websiteURL": "https://github.com/r-seriesx/judicial-mcp",
         "defaultPrompt": [
           "查詢民法第184條，並說明單條生效判斷與官方依據。"
         ]
