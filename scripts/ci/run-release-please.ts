@@ -3,7 +3,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { text } from 'node:stream/consumers'
-import { parseReleaseRepository, releaseRepoId } from './release-repository'
+import {
+  parseMainCommitSha,
+  parseReleaseRepository,
+  releaseRepoId,
+} from './release-repository'
 
 export async function runReleasePlease(
   mode: string | undefined,
@@ -47,22 +51,10 @@ export async function runReleasePlease(
     )
     if (current.fullName !== repository.fullName)
       throw new Error('GitHub release repository identity changed')
-    const liveMain = await readGitHub(
-      `/repositories/${releaseRepoId}/git/ref/heads/main`,
+    const liveMain = parseMainCommitSha(
+      await readGitHub(`/repositories/${releaseRepoId}/git/ref/heads/main`),
     )
-    if (
-      !liveMain ||
-      typeof liveMain !== 'object' ||
-      !('object' in liveMain) ||
-      !liveMain.object ||
-      typeof liveMain.object !== 'object' ||
-      !('sha' in liveMain.object) ||
-      typeof liveMain.object.sha !== 'string' ||
-      !/^[a-f0-9]{40}$/.test(liveMain.object.sha)
-    ) {
-      throw new Error('Invalid GitHub main ref')
-    }
-    if (liveMain.object.sha !== expectedBaseSha) return
+    if (liveMain !== expectedBaseSha) return
     const code = await run([
       'bunx',
       'release-please@17.11.2',
@@ -125,7 +117,9 @@ if (import.meta.main) {
           process.stdout.write(stdout)
           process.stderr.write(stderr)
         }),
-      process.env.CI_COMMIT_SHA,
+      process.env.CI_SYSTEM_NAME === 'woodpecker'
+        ? process.env.CI_COMMIT_SHA
+        : undefined,
     )
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Release failed')

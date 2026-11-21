@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -12,7 +13,12 @@ const canonical = `${owner}/${name}`
 const sha = 'd'.repeat(40)
 const synthetic = 'synthetic-credential'
 
-function fakeGitHub(mainSha = sha, nameId = 1010982060) {
+function fakeGitHub(
+  mainSha = sha,
+  nameId = 1010982060,
+  ref = 'refs/heads/main',
+  type = 'commit',
+) {
   const identity = {
     id: 1010982060,
     name,
@@ -28,7 +34,7 @@ function fakeGitHub(mainSha = sha, nameId = 1010982060) {
     if (path === `/repos/${canonical}`)
       return Response.json({ ...identity, id: nameId })
     if (path === '/repositories/1010982060/git/ref/heads/main')
-      return Response.json({ object: { sha: mainSha } })
+      return Response.json({ ref, object: { type, sha: mainSha } })
     return new Response('', { status: 404 })
   })
 }
@@ -98,6 +104,44 @@ describe('runReleasePlease', () => {
       ),
     ).rejects.toThrow()
     expect(run).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['refs/heads/another-branch', 'commit'],
+    ['refs/heads/main', 'tag'],
+  ])('rejects a misleading GitHub main payload (%s, %s)', async (ref, type) => {
+    const run = vi.fn(async () => 0)
+    await expect(
+      runReleasePlease(
+        'release-pr',
+        synthetic,
+        fakeGitHub(sha, 1010982060, ref, type),
+        run,
+        sha,
+      ),
+    ).rejects.toThrow()
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('refuses a bare CI commit outside Woodpecker at the CLI boundary', () => {
+    const result = spawnSync(
+      'bun',
+      ['scripts/ci/run-release-please.ts', 'release-pr'],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          CI_SYSTEM_NAME: 'other-runner',
+          CI_COMMIT_SHA: sha,
+          GITHUB_API_TOKEN: synthetic,
+        },
+      },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      'CI commit SHA is required for Release Please',
+    )
+    expect(result.stderr).not.toContain(synthetic)
   })
 
   it('does not expose the synthetic credential in the child environment or either output stream', async () => {

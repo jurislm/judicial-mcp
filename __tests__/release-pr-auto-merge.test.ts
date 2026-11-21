@@ -261,6 +261,8 @@ interface FakeOptions {
   pendingCheckPolls?: number
   mainSha?: string
   mainShaAfterUpdate?: string
+  mainRef?: string
+  mainObjectType?: string
   owner?: string
   repositoryId?: number
   prBaseSha?: string
@@ -345,7 +347,13 @@ function fakeGitHub(options: FakeOptions = {}) {
     else if (path === `/repositories/1010982060/pulls/20/files`) value = FILES
     else if (path === `/repositories/1010982060/commits/${headSha}/check-runs`) value = checksFor()
     else if (path === `/repositories/1010982060/git/ref/heads/main`)
-      value = { object: { sha: (updateRequested ? options.mainShaAfterUpdate : undefined) ?? options.mainSha ?? prBaseSha } }
+      value = {
+        ref: options.mainRef ?? 'refs/heads/main',
+        object: {
+          type: options.mainObjectType ?? 'commit',
+          sha: (updateRequested ? options.mainShaAfterUpdate : undefined) ?? options.mainSha ?? prBaseSha,
+        },
+      }
     else if (path.startsWith(`/repositories/1010982060/compare/`)) value = { status: options.compareStatus ?? 'behind' }
     else if (path.startsWith(`/repositories/1010982060/contents/`)) {
       const filePath = decodeURIComponent(path.slice(`/repositories/1010982060/contents/`.length))
@@ -511,6 +519,15 @@ describe('runReleasePrAutoMerge when the release PR base is behind main', () => 
     expect(gh.merges()).toEqual([])
   })
 
+
+  it.each([
+    ['refs/heads/not-main', 'commit'], ['refs/heads/main', 'tag'],
+  ])('does not write if the main ref response is malformed (%s, %s)', async (mainRef, mainObjectType) => {
+    const gh = fakeGitHub({ mainSha: CI_SHA, mainRef, mainObjectType })
+    await expect(run(gh)).rejects.toThrow('Invalid GitHub main ref')
+    expect(gh.updates()).toEqual([])
+    expect(gh.merges()).toEqual([])
+  })
 
   it('does not update or merge if main was already ahead', async () => {
     const newerMain = 'd'.repeat(40)

@@ -1,4 +1,4 @@
-import { parseReleaseRepository, releaseRepoId } from './release-repository'
+import { parseMainCommitSha, parseReleaseRepository, releaseRepoId } from './release-repository'
 export const BASE_BRANCH = 'main'
 export const RELEASE_BRANCH = 'release-please--branches--main--components--judicial-mcp'
 export const RELEASE_AUTHOR = 'terry90918'
@@ -317,8 +317,7 @@ export async function runReleasePrAutoMerge(options: AutoMergeOptions): Promise<
   const repository = parseReleaseRepository(await githubRequest(repositoryPath))
 
   async function mainSha(): Promise<string> {
-    const value = requiredRecord(await githubRequest(`${repositoryPath}/git/ref/heads/${BASE_BRANCH}`), 'base ref')
-    return requiredString(requiredRecord(value.object, 'base ref.object').sha, 'base ref.object.sha')
+    return parseMainCommitSha(await githubRequest(`${repositoryPath}/git/ref/heads/${BASE_BRANCH}`))
   }
 
   const query = new URLSearchParams({
